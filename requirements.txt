@@ -1,0 +1,36 @@
+# Bibliotecas principais
+fpdf2
+streamlit>=1.22.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Leitura e manipulação de PDF/texto
+pdfplumber
+PyMuPDF
+unidecode
+
+# Datas, índices e automação
+python-dateutil==2.8.2
+sidrapy
+num2words
+
+# Web scraping / HTML
+html5lib
+beautifulsoup4
+
+# GitHub API
+PyGithub
+
+PyPDF2 #16092025
+
+#Calendário para verificação de dias úteis
+workalendar
+
+
+plotly==5.15.0
+openpyxl==3.1.2
+
+# Observação:
+# Se algum script antigo usar a versão velha do fpdf (sem suporte a UTF-8),
+# atualize esses scripts para usar fpdf2, pois ambas têm a mesma interface: from fpdf import FPDF
+
