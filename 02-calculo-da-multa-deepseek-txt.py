@@ -42,7 +42,7 @@ def calcular_data_final(data_inicio, num_dias, dias_uteis=False):
     return data_final
 
 def get_selic_rates():
-    url = "https://raw.githubusercontent.com/carlospatrickds/vscode_python/master/selic.csv"
+    url = "https://raw.githubusercontent.com/carlospatrickds/Geral/main/selic.csv"
     try:
         response = requests.get(url)
         response.raise_for_status()
