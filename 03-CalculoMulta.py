@@ -43,7 +43,7 @@ def calcular_data_final(data_inicio, num_dias, dias_uteis=False):
     return data_final
 
 def get_selic_rates():
-    url = "https://raw.githubusercontent.com/carlospatrickds/vscode_python/master/selic.csv"
+    url = "https://raw.githubusercontent.com/carlospatrickds/Geral/main/selic.csv"
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -259,7 +259,7 @@ def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, fonte
         # === ADICIONAR LOGO CENTRALIZADA ===
         try:
             # URL da sua imagem no GitHub (usando raw.githubusercontent.com)
-            logo_url = "https://raw.githubusercontent.com/carlospatrickds/NovoRepositorio/main/PODER_JUD_PE_2.png"
+            logo_url = "https://raw.githubusercontent.com/carlospatrickds/geral/main/PODER_JUD_PE_2.png"
             
             # Baixar a imagem
             response = requests.get(logo_url)
