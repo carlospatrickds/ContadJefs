@@ -34,3 +34,9 @@ openpyxl==3.1.2
 # Se algum script antigo usar a versão velha do fpdf (sem suporte a UTF-8),
 # atualize esses scripts para usar fpdf2, pois ambas têm a mesma interface: from fpdf import FPDF
 
+#streamlit>=1.30.0
+#pandas>=2.0.0
+#numpy>=1.26.0
+altair>=5.0.0
+fpdf>=1.7.2
+
