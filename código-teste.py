@@ -561,14 +561,20 @@ def criar_relatorio_filtros(df_filtrado, filtros_aplicados):
     return pdf
 
 def gerar_link_download_pdf(pdf, nome_arquivo):
-    """Gera link de download para o PDF"""
+    """Gera link de download para o PDF - CORREÇÃO DO ERRO"""
     try:
-        pdf_output = pdf.output(dest='S').encode('latin-1')
+        # CORREÇÃO: Usar bytes em vez de encode
+        pdf_output = pdf.output(dest='S')
+        if isinstance(pdf_output, str):
+            pdf_output = pdf_output.encode('latin-1')
+        elif isinstance(pdf_output, bytearray):
+            pdf_output = bytes(pdf_output)
+        
         b64 = base64.b64encode(pdf_output).decode('latin-1')
         href = f'<a href="data:application/octet-stream;base64,{b64}" download="{nome_arquivo}">📄 Baixar Relatório PDF</a>'
         return href
     except Exception as e:
-        st.error(f"Erro ao gerar PDF: {e}")
+        st.error(f"Erro ao gerar PDF: {str(e)}")
         return ""
 
 def gerar_csv_atribuicoes(df):
