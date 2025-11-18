@@ -543,8 +543,6 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
             - Sábados
             - Domingos  
             - Todos os feriados nacionais
-            - Feriados estaduais (SP)
-            - Dia do Servidor Público (28/10)
             
             **Dias suspensos adicionam ao prazo final**
             """)
