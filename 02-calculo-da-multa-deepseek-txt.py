@@ -540,8 +540,12 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
         if tipo_prazo == "Dias úteis":
             st.info("""
             **Feriados considerados automaticamente:**
-            - Sábados e domingos
-            - Feriados nacionais           
+            - Sábados
+            - Domingos  
+            - Todos os feriados nacionais
+            - Feriados estaduais (SP)
+            - Dia do Servidor Público (28/10)
+            
             **Dias suspensos adicionam ao prazo final**
             """)
         else:
@@ -553,6 +557,66 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
             
             **Dias suspensos adicionam ao prazo final**
             """)
+
+    # NOVA SEÇÃO RECOLHÍVEL COM LISTA DE FERIADOS
+    with st.expander("📅 Ver lista completa de feriados e dias não considerados", expanded=False):
+        st.markdown("### 🗓️ Feriados Nacionais 2024/2025")
+        
+        col_feriados1, col_feriados2 = st.columns(2)
+        
+        with col_feriados1:
+            st.markdown("""
+            **2024:**
+            - 01/01 - Confraternização Universal
+            - 12/02 - Carnaval
+            - 13/02 - Carnaval
+            - 29/03 - Sexta-feira Santa
+            - 21/04 - Tiradentes
+            - 01/05 - Dia do Trabalho
+            - 30/05 - Corpus Christi
+            - 12/06 - Véspera de São João (Ponto Facultativo)
+            """)
+        
+        with col_feriados2:
+            st.markdown("""
+            **2024 (cont.):**
+            - 07/09 - Independência do Brasil
+            - 12/10 - Nossa Senhora Aparecida
+            - 02/11 - Finados
+            - 15/11 - Proclamação da República
+            - 20/11 - Dia da Consciência Negra
+            - 24/12 - Véspera de Natal (Ponto Facultativo)
+            - 25/12 - Natal
+            - 31/12 - Véspera de Ano Novo (Ponto Facultativo)
+            """)
+        
+        st.markdown("### 🏛️ Feriados Estaduais (São Paulo)")
+        st.markdown("""
+        - 09/07 - Revolução Constitucionalista de 1932
+        - 28/10 - Dia do Servidor Público
+        """)
+        
+        st.markdown("### ⚠️ Dias Não Considerados no Cálculo")
+        col_nao_considerados1, col_nao_considerados2 = st.columns(2)
+        
+        with col_nao_considerados1:
+            st.markdown("""
+            **Dias úteis:**
+            - Sábados
+            - Domingos
+            - Todos os feriados listados
+            - Pontos facultativos
+            """)
+        
+        with col_nao_considerados2:
+            st.markdown("""
+            **Dias corridos:**
+            - Apenas dias explicitamente abatidos
+            - Feriados em dias de semana
+            - Prazos processuais suspensos
+            """)
+        
+        st.info("💡 **Dica:** Os dias abatidos acima serão **adicionados ao prazo final**, postergando o início da multa.")
 
     # CALCULAR INÍCIO DA MULTA COM DIAS SUSPENSOS
     data_fim_prazo, data_inicio_multa = calcular_inicio_multa(
