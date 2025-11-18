@@ -247,6 +247,39 @@ def limpar_dados():
     
     st.success("Dados limpos com sucesso!")
 
+def calcular_inicio_multa(data_despacho, prazo_dias, dias_uteis=False, dias_suspensos=0):
+    """
+    Calcula o fim do prazo e início da multa considerando dias suspensos
+    """
+    cal = Brazil() if dias_uteis else None
+    
+    if dias_uteis:
+        data_fim_prazo = data_despacho
+        dias_contados = 1  # Começa contando o primeiro dia
+        dias_suspensos_restantes = dias_suspensos
+        
+        # Continua até contar todos os dias úteis do prazo E consumir todos os dias suspensos
+        while dias_contados < prazo_dias or dias_suspensos_restantes > 0:
+            data_fim_prazo += timedelta(days=1)
+            
+            # Verifica se é dia útil
+            if cal.is_working_day(data_fim_prazo) and data_fim_prazo.weekday() < 5:
+                if dias_suspensos_restantes > 0:
+                    # Este dia útil é consumido como dia suspenso
+                    dias_suspensos_restantes -= 1
+                else:
+                    # Conta como dia normal do prazo
+                    if dias_contados < prazo_dias:
+                        dias_contados += 1
+            # Para fins de semana e feriados, não faz nada
+                    
+    else:
+        # Para dias corridos: simplesmente adiciona prazo + suspensos
+        data_fim_prazo = data_despacho + timedelta(days=(prazo_dias - 1) + dias_suspensos)
+    
+    data_inicio_multa = data_fim_prazo + timedelta(days=1)
+    return data_fim_prazo, data_inicio_multa
+
 def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, fonte_obs="Arial", tam_obs=8):
     try:
         FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
@@ -500,7 +533,7 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
             max_value=50,
             value=0,
             step=1,
-            help="Informe quantos dias devem ser desconsiderados do cálculo"
+            help="Informe quantos dias devem ser desconsiderados do cálculo do prazo"
         )
         
     with col_info:
@@ -509,6 +542,10 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
             **Feriados considerados automaticamente:**
             - Sábados e domingos
             - Feriados nacionais
+            - Feriados estaduais (SP)
+            - Dia do Servidor Público (28/10)
+            
+            **Dias suspensos adicionam ao prazo final**
             """)
         else:
             st.warning("""
@@ -516,30 +553,16 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
             - Feriados que caem em dias de semana
             - Prazos processuais suspensos
             - Dias de ponto facultativo
+            
+            **Dias suspensos adicionam ao prazo final**
             """)
 
-    # Atualizar dias abatidos nas faixas se necessário
-    if dias_abatidos_feriados > 0:
-        st.success(f"⚠️ **Atenção:** {dias_abatidos_feriados} dia(s) serão abatidos de cada faixa adicionada")
-
-    def calcular_inicio_multa(data_despacho, prazo_dias, dias_uteis=False):
-        cal = Brazil() if dias_uteis else None
-        if dias_uteis:
-            data_fim_prazo = data_despacho
-            dias_contados = 1
-            while dias_contados < prazo_dias:
-                data_fim_prazo += timedelta(days=1)
-                if cal.is_working_day(data_fim_prazo) and data_fim_prazo.weekday() < 5:
-                    dias_contados += 1
-        else:
-            data_fim_prazo = data_despacho + timedelta(days=prazo_cumprimento - 1)
-        data_inicio_multa = data_fim_prazo + timedelta(days=1)
-        return data_fim_prazo, data_inicio_multa
-
+    # CALCULAR INÍCIO DA MULTA COM DIAS SUSPENSOS
     data_fim_prazo, data_inicio_multa = calcular_inicio_multa(
         data_despacho, 
         prazo_cumprimento, 
-        tipo_prazo == "Dias úteis"
+        tipo_prazo == "Dias úteis",
+        dias_abatidos_feriados  # AGORA INCLUI OS DIAS SUSPENSOS NO CÁLCULO
     )
 
     col_result1, col_result2 = st.columns(2)
@@ -547,6 +570,9 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
         st.info(f"**Fim do prazo para cumprimento:** {data_fim_prazo.strftime('%d/%m/%Y')}")
     with col_result2:
         st.success(f"**Início da multa (1º dia após o prazo):** {data_inicio_multa.strftime('%d/%m/%Y')}")
+
+    if dias_abatidos_feriados > 0:
+        st.warning(f"**⚠️ Atenção:** {dias_abatidos_feriados} dia(s) de prazo suspenso foram considerados no cálculo do prazo. A multa inicia em {data_inicio_multa.strftime('%d/%m/%Y')}")
 
     if "faixas" not in st.session_state:
         st.session_state.faixas = []
