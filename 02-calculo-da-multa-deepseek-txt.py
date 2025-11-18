@@ -588,10 +588,9 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
             - 31/12 - Véspera de Ano Novo (Ponto Facultativo)
             """)
         
-        st.markdown("### 🏛️ Feriados Estaduais (São Paulo)")
+        st.markdown("### 🏛️ Feriados Estaduais ()")
         st.markdown("""
-        - 09/07 - Revolução Constitucionalista de 1932
-        - 28/10 - Dia do Servidor Público
+ 
         """)
         
         st.markdown("### ⚠️ Dias Não Considerados no Cálculo")
