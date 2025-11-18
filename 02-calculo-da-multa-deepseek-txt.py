@@ -509,8 +509,6 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
             **Feriados considerados automaticamente:**
             - Sábados e domingos
             - Feriados nacionais
-            - Feriados estaduais (SP)
-            - Dia do Servidor Público (28/10)
             """)
         else:
             st.warning("""
