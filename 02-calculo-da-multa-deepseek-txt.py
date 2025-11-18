@@ -9,6 +9,7 @@ import tempfile
 from workalendar.america import Brazil
 import json
 import base64
+from unidecode import unidecode
 
 # ======= Funções utilitárias =======
 def set_brazilian_locale():
@@ -35,7 +36,7 @@ def calcular_data_final(data_inicio, num_dias, dias_uteis=False):
         dias_contados = 1
         while dias_contados < num_dias:
             data_final += timedelta(days=1)
-            if cal.is_working_day(data_final) and data_final.weekday() < 10:
+            if cal.is_working_day(data_final) and data_final.weekday() < 5:
                 dias_contados += 1
     else:
         data_final = data_inicio + timedelta(days=num_dias - 1)
@@ -163,7 +164,14 @@ def salvar_dados():
         "indices_manuais": {
             key: value for key, value in st.session_state.items() 
             if key.startswith("indice_") and isinstance(value, (int, float))
-        }
+        },
+        # Dados do processo
+        "numero_processo": st.session_state.get("proc_input", ""),
+        "nome_autor": st.session_state.get("autor_input", ""),
+        "nome_reu": st.session_state.get("reu_input", ""),
+        "observacao": st.session_state.get("obs_input", ""),
+        "fonte_obs": st.session_state.get("fonte_obs", "Arial"),
+        "tam_obs": st.session_state.get("tam_obs", 8)
     }
     
     # Codifica os dados em base64 para evitar problemas de encoding
@@ -202,6 +210,14 @@ def carregar_dados(dados_codificados):
         for key, value in dados.get("indices_manuais", {}).items():
             st.session_state[key] = value
             
+        # Restaura dados do processo
+        st.session_state.proc_input = dados.get("numero_processo", "")
+        st.session_state.autor_input = dados.get("nome_autor", "")
+        st.session_state.reu_input = dados.get("nome_reu", "")
+        st.session_state.obs_input = dados.get("observacao", "")
+        st.session_state.fonte_obs = dados.get("fonte_obs", "Arial")
+        st.session_state.tam_obs = dados.get("tam_obs", 8)
+            
         st.success("Dados carregados com sucesso!")
         
     except Exception as e:
@@ -216,6 +232,14 @@ def limpar_dados():
     st.session_state.tipo_prazo = "Dias úteis"
     st.session_state.data_atualizacao = date.today()
     
+    # Limpa dados do processo
+    st.session_state.proc_input = ""
+    st.session_state.autor_input = ""
+    st.session_state.reu_input = ""
+    st.session_state.obs_input = ""
+    st.session_state.fonte_obs = "Arial"
+    st.session_state.tam_obs = 8
+    
     # Limpa índices manuais
     keys_to_remove = [key for key in st.session_state.keys() if key.startswith("indice_")]
     for key in keys_to_remove:
@@ -228,25 +252,66 @@ def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, fonte
         FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
         pdf = FPDF()
         pdf.add_page()
+        
+        # Configurar margens menores
         pdf.set_margins(left=10, top=10, right=10)
+        
+        # === ADICIONAR LOGO CENTRALIZADA ===
         try:
-            if fonte_obs == "DejaVu":
-                pdf.add_font("DejaVu", "", FONT_PATH, uni=True)
-            pdf.set_font("DejaVu" if fonte_obs == "DejaVu" else "Arial", size=10)
+            # URL da sua imagem no GitHub (usando raw.githubusercontent.com)
+            logo_url = "https://raw.githubusercontent.com/carlospatrickds/geral/main/PODER_JUD_PE_2.png"
+            
+            # Baixar a imagem
+            response = requests.get(logo_url)
+            response.raise_for_status()
+            
+            # Salvar temporariamente
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_img:
+                tmp_img.write(response.content)
+                tmp_img_path = tmp_img.name
+            
+            # Adicionar logo centralizada no topo
+            largura_pagina = 190
+            largura_imagem = 80
+            posicao_x = (largura_pagina - largura_imagem) / 2 + 10
+            
+            pdf.image(tmp_img_path, x=posicao_x, y=8, w=largura_imagem)
+            pdf.ln(55)
+            
+            # Limpar arquivo temporário
+            import os
+            os.unlink(tmp_img_path)
+            
+        except Exception as img_error:
+            st.warning(f"Não foi possível carregar a logo: {img_error}")
+            pdf.set_font("Arial", "B", 12)
+            pdf.cell(0, 8, "Relatório de Multa Diária Corrigida", ln=True, align="C")
+            pdf.ln(5)
+        
+        # Configurar a fonte
+        try:
+            pdf.add_font("DejaVu", "", FONT_PATH, uni=True)
+            pdf.set_font("DejaVu", size=10)
         except:
             pdf.set_font("Arial", size=10)
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 8, "Relatório de Multa Diária Corrigida", ln=True, align="C")
-        pdf.ln(5)
-        pdf.set_font("Arial", "", 10)
+            st.warning("Fonte DejaVu não encontrada, usando Arial como fallback.")
+        
+        # Dados do processo
+        pdf.set_font("Arial", "", 11)
         pdf.cell(0, 6, f"Número do Processo: {numero_processo}", ln=True)
         pdf.cell(0, 6, f"Autor: {nome_autor}", ln=True)
         pdf.cell(0, 6, f"Réu: {nome_reu}", ln=True)
+        pdf.ln(10)
+
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 8, "Relatório de Multa Diária Corrigida", ln=True, align="C")
         pdf.ln(5)
+
+        # Cálculo do Início da Multa
         pdf.set_font("Arial", "B", 10)
         pdf.cell(0, 6, "Cálculo do Início da Multa:", ln=True)
         pdf.set_font("Arial", "", 10)
-        pdf.cell(90, 6, "Data do despacho/intimação:", 0, 0)
+        pdf.cell(90, 6, "Data da ciência da decisão:", 0, 0)
         pdf.cell(0, 6, res['data_despacho'].strftime('%d/%m/%Y'), ln=True)
         pdf.cell(90, 6, "Prazo para cumprimento:", 0, 0)
         pdf.cell(0, 6, f"{res['prazo_cumprimento']} {res['tipo_prazo'].lower()}", ln=True)
@@ -255,9 +320,12 @@ def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, fonte
         pdf.cell(90, 6, "Início da multa:", 0, 0)
         pdf.cell(0, 6, res['data_inicio_multa'].strftime('%d/%m/%Y'), ln=True)
         pdf.ln(5)
+
+        # Detalhamento das Faixas
         pdf.set_font("Arial", "B", 10)
         pdf.cell(0, 6, "Detalhamento das Faixas:", ln=True)
         pdf.set_font("Arial", "", 10)
+
         for i, faixa in enumerate(st.session_state.faixas):
             if faixa.get("dias_uteis", False):
                 cal = Brazil()
@@ -272,6 +340,7 @@ def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, fonte
             else:
                 dias_contabilizados = (faixa["fim"] - faixa["inicio"]).days + 1 - faixa.get("dias_abatidos", 0)
                 tipo_dias = "dias corridos"
+            
             linha = (
                 f"Faixa {i+1}: {faixa['inicio'].strftime('%d/%m/%Y')} a {faixa['fim'].strftime('%d/%m/%Y')} | "
                 f"{dias_contabilizados} {tipo_dias} | "
@@ -280,7 +349,10 @@ def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, fonte
             )
             pdf.multi_cell(0, 6, linha)
             pdf.ln(2)
+
         pdf.ln(5)
+
+        # Atualização da multa
         pdf.set_font("Arial", "B", 10)
         pdf.cell(0, 6, "Atualização da multa:", ln=True)
         pdf.set_font("Arial", "", 10)
@@ -289,11 +361,14 @@ def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, fonte
         pdf.cell(90, 6, "Total de dias em atraso:", 0, 0)
         pdf.cell(0, 6, f"{res['total_dias']}", ln=True)
         pdf.cell(90, 6, "Multa sem correção:", 0, 0)
-        pdf.cell(0, 6, moeda_br(res['total_sem_correcao']), ln=True)
+        pdf.cell(0, 6, f"{moeda_br(res['total_sem_correcao'])}", ln=True)
+
+        # Detalhamento mensal
         pdf.ln(5)
         pdf.set_font("Arial", "B", 10)
         pdf.cell(0, 6, "Correção mês a mês:", ln=True)
         pdf.set_font("Arial", "", 10)
+
         for mes in res["meses_ordenados"]:
             bruto = res["totais_mensais"][mes]
             indice = res["indices"].get(mes, 0.0)
@@ -301,15 +376,22 @@ def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, fonte
             data_formatada = f"{mes[5:]}/{mes[:4]}"
             linha = f"{data_formatada}: {moeda_br(bruto)} x {indice*100:.2f}% = {moeda_br(corrigido)}"
             pdf.cell(0, 6, linha, ln=True)
+
+        # Multa corrigida final
         pdf.ln(5)
         pdf.set_font("Arial", "B", 10)
         pdf.cell(90, 6, "Multa corrigida:", 0, 0)
-        pdf.cell(0, 6, moeda_br(res['total_corrigido']), ln=True)
+        pdf.cell(0, 6, f"{moeda_br(res['total_corrigido'])}", ln=True)
+
         pdf.ln(8)
+
+        # Observação
         if observacao and observacao.strip():
             pdf.ln(3)
             pdf.set_font(fonte_obs, "I", tam_obs)
-            pdf.multi_cell(0, 3, f"Observação: {observacao.strip()}")  # ← Mudei de 6 para 3
+            pdf.multi_cell(0, 3, f"Observação: {observacao.strip()}")
+        
+        # Rodapé
         pdf.ln(8)
         pdf.set_font("Arial", "I", 8)
         pdf.cell(
@@ -317,6 +399,7 @@ def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, fonte
             "Nota: A correção foi realizada com base na taxa SELIC acumulada, conforme fatores disponíveis no site do Banco Central do Brasil",
             ln=True
         )
+
         pdf.ln(6)
         pdf.set_font("Arial", size=10)
         pdf.cell(
@@ -324,10 +407,13 @@ def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, fonte
             "Documento é assinado e datado eletronicamente.",
             ln=True
         )
+        
+        # Gerar PDF
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
             pdf.output(tmp_file.name)
             tmp_file.seek(0)
             return tmp_file.read()
+
     except Exception as e:
         st.error(f"Erro ao gerar PDF: {str(e)}")
         import traceback
@@ -381,17 +467,17 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
     col_despacho, col_prazo = st.columns(2)
     with col_despacho:
         data_despacho = st.date_input(
-            "Data do despacho/intimação",
+            "Data da ciência da decisão",
             value=date.today(),
             format="DD/MM/YYYY",
-            help="Data em que foi publicado o despacho ou intimação"
+            help="Verificar na aba de expediente a data de ciência da decisão por parte de quem deve cumprir"
         )
     with col_prazo:
         prazo_cumprimento = st.number_input(
             "Prazo para cumprimento (dias)",
             min_value=1,
             max_value=365,
-            value=15,
+            value=10,
             step=1,
             help="Prazo em dias para cumprimento da obrigação"
         )
@@ -401,6 +487,43 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
             index=0,
             help="Se o prazo para cumprimento conta apenas dias úteis ou dias corridos"
         )
+
+    # NOVA SEÇÃO PARA FERIADOS E DIAS A ABATER
+    st.markdown("---")
+    st.subheader("🏖️ Feriados e Dias a Abater")
+
+    col_feriados, col_info = st.columns([2, 3])
+    with col_feriados:
+        dias_abatidos_feriados = st.number_input(
+            "Dias a abater por feriados/prazos suspensos",
+            min_value=0,
+            max_value=50,
+            value=0,
+            step=1,
+            help="Informe quantos dias devem ser desconsiderados do cálculo"
+        )
+        
+    with col_info:
+        if tipo_prazo == "Dias úteis":
+            st.info("""
+            **Feriados considerados automaticamente:**
+            - Sábados e domingos
+            - Feriados nacionais
+            - Feriados estaduais (SP)
+            - Dia do Servidor Público (28/10)
+            """)
+        else:
+            st.warning("""
+            **Para dias corridos, verifique manualmente:**
+            - Feriados que caem em dias de semana
+            - Prazos processuais suspensos
+            - Dias de ponto facultativo
+            """)
+
+    # Atualizar dias abatidos nas faixas se necessário
+    if dias_abatidos_feriados > 0:
+        st.success(f"⚠️ **Atenção:** {dias_abatidos_feriados} dia(s) serão abatidos de cada faixa adicionada")
+
     def calcular_inicio_multa(data_despacho, prazo_dias, dias_uteis=False):
         cal = Brazil() if dias_uteis else None
         if dias_uteis:
@@ -457,41 +580,34 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
     )
 
     if st.session_state.modo_entrada == "Definir número de dias":
-        num_dias = st.number_input("Número de dias", min_value=1, max_value=365, value=5, step=1, key="num_dias_faixa")
+        num_dias = st.number_input("Número de dias", min_value=1, max_value=365, value=10, step=1, key="num_dias_faixa")
         tipo_dias = st.selectbox("Tipo de contagem", ["Dias úteis", "Dias corridos"], index=0, key="tipo_dias_faixa")
         data_fim = calcular_data_final(data_inicio, num_dias, tipo_dias == "Dias úteis")
         st.info(f"**Data final calculada:** {data_fim.strftime('%d/%m/%Y')}")
-        # grava em chave temporária (NÃO sobrescreve a key do widget)
         st.session_state["_tmp_data_fim_faixa"] = data_fim
         st.session_state["_tmp_tipo_dias_faixa"] = tipo_dias
     else:
-        # widget onde o usuário escolhe a data final
         data_fim = st.date_input(
             "Fim da faixa",
-            value=data_inicio + timedelta(days=5),
+            value=data_inicio + timedelta(days=10),
             format="DD/MM/YYYY",
             key="data_fim_faixa"
         )
         tipo_dias = st.selectbox("Tipo de contagem", ["Dias úteis", "Dias corridos"], index=0, key="tipo_dias_faixa")
 
-        # garante que data_fim é um objeto date
         if hasattr(data_fim, "to_pydatetime"):
             data_fim = data_fim.to_pydatetime().date()
         elif isinstance(data_fim, datetime):
             data_fim = data_fim.date()
 
-        # COPIA o valor do widget para a chave temporária
         st.session_state["_tmp_data_fim_faixa"] = data_fim
         st.session_state["_tmp_tipo_dias_faixa"] = tipo_dias
 
-    # CORREÇÃO: Função callback deve ser definida ANTES do formulário
     def add_faixa_callback():
-        # pega início e fim a partir das chaves temporárias (ou fallback)
         inicio = st.session_state.get("data_inicio_faixa")
         fim = st.session_state.get("_tmp_data_fim_faixa")
         tipo_dias = st.session_state.get("_tmp_tipo_dias_faixa", "Dias corridos")
 
-        # garante que são objeto date do Python
         from datetime import date as _date, datetime as _dt
         try:
             if hasattr(inicio, "to_pydatetime"):
@@ -521,17 +637,22 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
             st.session_state["faixas"] = []
         st.session_state.faixas.append(nova_faixa)
 
-        # calcula próximo início e grava em chave NÃO vinculada ao widget
         try:
             proximo_inicio = fim + timedelta(days=1)
         except Exception:
             proximo_inicio = fim
         st.session_state["_next_data_inicio_faixa"] = proximo_inicio
 
-    # CORREÇÃO: Formulário deve estar FORA da função callback
     with st.form("nova_faixa", clear_on_submit=True):
         valor_diario = st.number_input("Valor diário (R$)", min_value=0.0, step=1.0, value=50.0, key="valor_faixa")
-        dias_abatidos = st.number_input("Dias abatidos (prazo suspenso)", min_value=0, max_value=50, value=0, step=1, key="abatidos_faixa")
+        dias_abatidos = st.number_input(
+            "Dias abatidos (prazo suspenso)", 
+            min_value=0, 
+            max_value=50, 
+            value=dias_abatidos_feriados,  # AGORA USA O VALOR DA SEÇÃO DE FERIADOS
+            step=1, 
+            key="abatidos_faixa"
+        )
         submitted = st.form_submit_button("➕ Adicionar faixa", on_click=add_faixa_callback)
         
         if submitted:
@@ -587,43 +708,6 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
     if st.button("Abrir site do BC"):
         js = "window.open('https://www.bcb.gov.br/estabilidadefinanceira/selicfatoresacumulados')"
         st.components.v1.html(f"<script>{js}</script>", height=0, width=0)
-
-    # === NOVA SEÇÃO: SALVAR E ABRIR ARQUIVO ===
-    st.markdown("---")
-    st.subheader("💾 Salvar / Abrir Projeto")
-    
-    col_salvar, col_abrir, col_limpar = st.columns(3)
-    
-    with col_salvar:
-        st.markdown("**Salvar projeto atual**")
-        dados_salvos = salvar_dados()
-        st.download_button(
-            label="💾 Salvar Arquivo",
-            data=dados_salvos,
-            file_name=f"multa_calculada_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-            mime="text/plain",
-            help="Salva todos os dados atuais em um arquivo para usar depois"
-        )
-    
-    with col_abrir:
-        st.markdown("**Abrir projeto salvo**")
-        arquivo_carregado = st.file_uploader(
-            "Selecione o arquivo .txt",
-            type=['txt'],
-            key="file_uploader",
-            label_visibility="collapsed"
-        )
-        if arquivo_carregado is not None:
-            dados_carregados = arquivo_carregado.read().decode('utf-8')
-            if st.button("📂 Carregar Dados", use_container_width=True):
-                carregar_dados(dados_carregados)
-                st.rerun()
-    
-    with col_limpar:
-        st.markdown("**Limpar tudo**")
-        if st.button("🗑️ Limpar Dados", use_container_width=True, help="Remove todas as faixas e dados atuais"):
-            limpar_dados()
-            st.rerun()
 
     totais_mensais = defaultdict(float)
     total_dias = 0
@@ -730,6 +814,43 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
                 nome_reu = st.text_input("Réu", key="reu_input")
                 fonte_obs = st.selectbox("Fonte das observações", ["Arial", "DejaVu"], key="fonte_obs")
                 tam_obs = st.slider("Tamanho da fonte das observações", 8, 10, 8, key="tam_obs")
+                
+                # SEÇÃO SALVAR/ABRIR
+                st.markdown("---")
+                st.subheader("💾 Salvar / Abrir Projeto")
+                
+                col_salvar, col_abrir = st.columns(2)
+                
+                with col_salvar:
+                    st.markdown("**Salvar projeto atual**")
+                    dados_salvos = salvar_dados()
+                    st.download_button(
+                        label="💾 Salvar Arquivo",
+                        data=dados_salvos,
+                        file_name=f"multa_calculada_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                        mime="text/plain",
+                        help="Salva todos os dados atuais incluindo dados do processo"
+                    )
+                
+                with col_abrir:
+                    st.markdown("**Abrir projeto salvo**")
+                    arquivo_carregado = st.file_uploader(
+                        "Selecione o arquivo .txt",
+                        type=['txt'],
+                        key="file_uploader",
+                        label_visibility="collapsed"
+                    )
+                    if arquivo_carregado is not None:
+                        dados_carregados = arquivo_carregado.read().decode('utf-8')
+                        if st.button("📂 Carregar Dados", use_container_width=True):
+                            carregar_dados(dados_carregados)
+                            st.rerun()
+                
+                st.markdown("**Limpar tudo**")
+                if st.button("🗑️ Limpar Dados", use_container_width=True, help="Remove todas as faixas e dados atuais"):
+                    limpar_dados()
+                    st.rerun()
+                
             with col2:
                 observacao = st.text_area("Observações", height=405, key="obs_input")
             if st.button("🖨️ Gerar PDF", type="primary", key="pdf_button"):
