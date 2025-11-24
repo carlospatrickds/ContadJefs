@@ -96,15 +96,15 @@ def gerar_pdf(titulo, df, observacoes=""):
     if 'mes' in df.columns:
         totais_mes = df.groupby("mes").size().reset_index(name='Total')
         
-        # === CORREÇÃO: Mapeia o nome do mês (ex: Março_2025) para a ordem cronológica ===
+        # === CORREÇÃO DE ORDENAÇÃO: Garante a ordem cronológica da tabela ===
         
         # Cria um dicionário de mapeamento: 'Março' -> 2, 'Janeiro' -> 0, etc.
         meses_map_index = {m: i for i, m in enumerate(MESES_ANUAL)}
         
-        # Extrai o nome do mês da coluna 'mes' (ex: 'Março_2025' -> 'Março')
+        # Extrai o nome do mês (ex: 'Março_2025' -> 'Março')
         totais_mes['mes_nome'] = totais_mes['mes'].str.split('_').str[0]
         
-        # Cria a chave de ordenação usando o índice do mês e o ano (que é o que está depois do '_')
+        # Cria a chave de ordenação: (Índice do Mês) + (Ano * 100) para ordenar por ano e mês
         totais_mes['order'] = totais_mes.apply(
             lambda row: meses_map_index.get(row['mes_nome'], 99) + int(row['mes'].split('_')[1]) * 100, 
             axis=1
@@ -113,14 +113,14 @@ def gerar_pdf(titulo, df, observacoes=""):
         # Ordena a tabela e remove colunas auxiliares
         totais_mes = totais_mes.sort_values(by='order').drop(columns=['order', 'mes_nome'])
         
-        # =================================================================================
+        # ====================================================================
         
         dados_tabela = [["Mês", "Total de Processos"]]
         for _, row in totais_mes.iterrows():
             dados_tabela.append([row['mes'], str(row['Total'])])
 
-        # Total Geral (Negrito com tag <font>)
-        dados_tabela.append([f'<font size=10><b>Total Geral</b></font>', f'<font size=10><b>{len(df)}</b></font>'])
+        # === CORREÇÃO DE FORMATAÇÃO: Remove tags HTML e usa TableStyle para negrito ===
+        dados_tabela.append(['Total Geral', str(len(df))])
         
         Story.append(Paragraph("<b>Totais de Processos por Mês:</b>", styles['SubHeader']))
         
@@ -133,7 +133,13 @@ def gerar_pdf(titulo, df, observacoes=""):
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            
+            # Aplica negrito (FONTNAME) e tamanho (FONTSIZE) à ÚLTIMA LINHA
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 11),
         ]))
+        # ===========================================================================
+        
         Story.append(t)
         Story.append(Paragraph("<br/>", styles['NormalLeft']))
 
@@ -319,6 +325,7 @@ elif aba == "Consolidado geral":
         )
 
         st.subheader("Totais por mês")
+        # Exibição no Streamlit, que não precisa de correção de ordem para a tabela
         st.table(df_final.groupby("mes").size())
 
         st.subheader("Total geral")
