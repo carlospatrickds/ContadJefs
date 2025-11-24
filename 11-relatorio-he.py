@@ -122,7 +122,13 @@ def gerar_pdf(titulo, df, observacoes=""):
         Story.append(t)
         Story.append(Paragraph("<br/>", styles['NormalLeft']))
 
-    # 4. Lista de Processos (Ordenada Cronologicamente)
+    # 4. Lista de Processos (Ordenada Cronologicamente e Re-numerada)
+    
+    # === CORREÇÃO: Remove 'nº' se já existir (evita ValueError) ===
+    if 'nº' in df.columns:
+        df = df.drop(columns=["nº"])
+    # =============================================================
+    
     Story.append(Paragraph("<b>Lista detalhada de processos (Ordem Cronológica):</b>", styles['SubHeader']))
     
     # Garante a ordem cronológica
@@ -134,10 +140,9 @@ def gerar_pdf(titulo, df, observacoes=""):
     df.insert(0, "nº", (df.reset_index(drop=True).index + 1).astype(str))
     
     for index, row in df.iterrows():
-        # Retira o nº sequencial do dataframe se for 'Relatório Mensal'
         n_sequencial = f"{row['nº']}."
         
-        # Novo formato: 1. PROCESSO — 08/11/2025
+        # Formato: 1. PROCESSO — 08/11/2025
         texto = f"{n_sequencial} {row['processo']} — {row['data']}"
         Story.append(Paragraph(texto, styles['NormalLeft']))
         
@@ -191,7 +196,7 @@ if aba == "Upload de Múltiplos Meses":
                         df["data"] = df["data"].dt.strftime("%d/%m/%Y")
                         df = df.drop(columns=["sequencial"])
 
-                        # Cria a coluna 'nº' apenas para fins internos, não é usada no PDF final
+                        # Cria a coluna 'nº' apenas para fins internos, é usada no arquivo Excel
                         df.insert(0, "nº", (df.reset_index().index + 1).astype(str).str.zfill(2))
 
                         salvar_mensal(mes_ano, df)
