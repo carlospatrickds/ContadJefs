@@ -96,7 +96,7 @@ def gerar_pdf(titulo, df, observacoes=""):
 
 
 # ============================================================
-#                      INTERFACE DO APP
+#                         INTERFACE DO APP
 # ============================================================
 aba = st.sidebar.radio("Menu", ["Upload mensal", "Relatório mensal", "Consolidado geral"])
 
@@ -127,11 +127,17 @@ if aba == "Upload mensal":
         if lista:
             df = pd.DataFrame(lista)
 
-            df["data"] = df["data"].dt.strftime("%d/%m/%Y")  # remove hora
-            df = df.drop(columns=["sequencial"])             # remove sequencial
+            df["data"] = df["data"].dt.strftime("%d/%m/%Y") # remove hora
+            df = df.drop(columns=["sequencial"])          # remove sequencial
 
-            df.insert(0, "nº", df.reset_index().index + 1)
-            df["nº"] = df["nº"].astype(str).zfill(2)
+            # === CORREÇÃO APLICADA AQUI ===
+            # Cria e formata a coluna 'nº' em uma única operação para evitar o AttributeError
+            df.insert(
+                0, 
+                "nº", 
+                (df.reset_index().index + 1).astype(str).str.zfill(2)
+            )
+            # ==============================
 
             salvar_mensal(mes_ano, df)
 
