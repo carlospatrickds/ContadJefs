@@ -96,18 +96,30 @@ def gerar_pdf(titulo, df, observacoes=""):
     if 'mes' in df.columns:
         totais_mes = df.groupby("mes").size().reset_index(name='Total')
         
-        # Ordena os meses para exibição
-        meses_ordem = {m: i for i, m in enumerate(MESES_ANUAL)}
-        totais_mes['order'] = totais_mes['mes'].map(meses_ordem)
-        # Se um mês não estiver na lista (e.g., nome antigo), ele vai para o final
-        totais_mes['order'] = totais_mes['order'].fillna(len(MESES_ANUAL)).astype(int)
-        totais_mes = totais_mes.sort_values(by='order').drop(columns='order')
+        # === CORREÇÃO: Mapeia o nome do mês (ex: Março_2025) para a ordem cronológica ===
+        
+        # Cria um dicionário de mapeamento: 'Março' -> 2, 'Janeiro' -> 0, etc.
+        meses_map_index = {m: i for i, m in enumerate(MESES_ANUAL)}
+        
+        # Extrai o nome do mês da coluna 'mes' (ex: 'Março_2025' -> 'Março')
+        totais_mes['mes_nome'] = totais_mes['mes'].str.split('_').str[0]
+        
+        # Cria a chave de ordenação usando o índice do mês e o ano (que é o que está depois do '_')
+        totais_mes['order'] = totais_mes.apply(
+            lambda row: meses_map_index.get(row['mes_nome'], 99) + int(row['mes'].split('_')[1]) * 100, 
+            axis=1
+        )
+        
+        # Ordena a tabela e remove colunas auxiliares
+        totais_mes = totais_mes.sort_values(by='order').drop(columns=['order', 'mes_nome'])
+        
+        # =================================================================================
         
         dados_tabela = [["Mês", "Total de Processos"]]
         for _, row in totais_mes.iterrows():
             dados_tabela.append([row['mes'], str(row['Total'])])
 
-        # Total Geral (CORRIGINDO O NEGRITO COM TAG <font>)
+        # Total Geral (Negrito com tag <font>)
         dados_tabela.append([f'<font size=10><b>Total Geral</b></font>', f'<font size=10><b>{len(df)}</b></font>'])
         
         Story.append(Paragraph("<b>Totais de Processos por Mês:</b>", styles['SubHeader']))
@@ -127,16 +139,14 @@ def gerar_pdf(titulo, df, observacoes=""):
 
     # 4. Lista de Processos (Ordenada Cronologicamente e Re-numerada)
     
-    # CORREÇÃO 1: Remove 'nº' se já existir (evita ValueError)
+    # Remove 'nº' se já existir (evita ValueError)
     if 'nº' in df.columns:
         df = df.drop(columns=["nº"])
     
-    # CORREÇÃO 2: Garante que a coluna 'data' esteja em formato datetime para ordenação
-    # e depois formata como string sem a hora.
+    # Garante que a coluna 'data' esteja em formato datetime para ordenação
     try:
         df['data_dt'] = pd.to_datetime(df['data'], format='%d/%m/%Y', errors='coerce')
     except ValueError:
-        # Se houver erro de formato (como no Excel sem formatação), tenta inferir
         df['data_dt'] = pd.to_datetime(df['data'], errors='coerce')
         
     df['data'] = df['data_dt'].dt.strftime("%d/%m/%Y") # Limpa a data, removendo 00:00:00
@@ -154,7 +164,6 @@ def gerar_pdf(titulo, df, observacoes=""):
         n_sequencial = f"{row['nº']}."
         
         # Formato: 1. PROCESSO — 08/11/2025
-        # Usando Paragraph para lidar com quebra de linha de forma automática se necessário
         texto = f"{n_sequencial} {row['processo']} — {row['data']}"
         Story.append(Paragraph(texto, styles['NormalLeft']))
         
@@ -296,7 +305,7 @@ elif aba == "Consolidado geral":
         df_final = pd.concat(lista)
         
         st.subheader("Observações")
-        # Criamos o campo de observação ANTES de chamar o download
+        # Capturamos o campo de observação
         obs_geral = st.text_area("Digite observações gerais para o consolidado:")
 
         # Passamos a observação para a função gerar_pdf
