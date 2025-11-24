@@ -4,6 +4,12 @@ import pdfplumber
 import re
 from io import BytesIO
 from datetime import datetime
+# Importamos NumberFormat do openpyxl para formatar datas e números
+from openpyxl.styles import numbers
+
+# ------------------------------------------------------------
+# Funções de conversão e extração
+# ------------------------------------------------------------
 
 def converter_competencia(competencia):
     """Converte competência no formato 'Mmm/AA' para data válida"""
@@ -19,6 +25,7 @@ def converter_competencia(competencia):
         
         # Se o ano tem 2 dígitos, converter para 4 dígitos
         if len(ano) == 2:
+            # Assumimos que anos <= 50 são do século 21 (20XX) e > 50 são do século 20 (19XX)
             ano = '19' + ano if int(ano) > 50 else '20' + ano
         
         # Criar data no primeiro dia do mês
@@ -41,7 +48,8 @@ def extract_data_from_pdf(pdf_file):
             lines = text.split('\n')
             
             for line in lines:
-                # Padrão para identificar linhas com dados (ex: "jul/94    90,15")
+                # Padrão para identificar linhas com dados (ex: "jul/94 90,15")
+                # Garante que a linha tenha pelo menos dois números separados por espaços
                 pattern = r'([a-z]{3}/\d{2,4})\s+(\d{1,3}(?:\.\d{3})*,\d{2})'
                 matches = re.findall(pattern, line.lower())
                 
@@ -68,9 +76,13 @@ def extract_data_from_pdf(pdf_file):
     
     return df
 
+# ------------------------------------------------------------
+# Interface Streamlit
+# ------------------------------------------------------------
+
 def main():
     st.title("📊 Leitor de Planilhas RMI - INSS")
-    st.write("Faça upload do arquivo PDF para extrair os dados dos salários de contribuição")
+    st.write("Faça upload do arquivo PDF para extrair os dados dos salários de contribuição.")
     
     # Upload do arquivo
     uploaded_file = st.file_uploader("Escolha o arquivo PDF", type="pdf")
@@ -86,7 +98,12 @@ def main():
                 
                 # Mostrar preview dos dados
                 st.subheader("Prévia dos Dados")
-                st.dataframe(df.head(20))
+                # Formata a coluna 'Data' para exibir DD/MM/AAAA no Streamlit
+                df_display = df.copy()
+                if 'Data' in df_display.columns:
+                    df_display['Data'] = df_display['Data'].dt.strftime('%d/%m/%Y')
+                
+                st.dataframe(df_display.head(20))
                 
                 # Estatísticas básicas
                 col1, col2, col3 = st.columns(3)
@@ -108,30 +125,45 @@ def main():
                         ["Data Completa", "Ano-Mês", "Original"]
                     )
                 
+                # Seleciona as colunas a serem incluídas por padrão
+                default_cols = ["Salario_Contribuicao"]
+                if formato_data == "Data Completa":
+                    default_cols.append("Data")
+                elif formato_data == "Ano-Mês":
+                    default_cols.append("Ano_Mes")
+                else:
+                    default_cols.append("Competencia_Original")
+
+                all_cols = ["Competencia_Original", "Data", "Ano_Mes", "Salario_Contribuicao"]
+                
                 with col2:
                     incluir_colunas = st.multiselect(
                         "Colunas a incluir:",
-                        ["Competencia_Original", "Data", "Ano_Mes", "Salario_Contribuicao"],
-                        default=["Competencia_Original", "Salario_Contribuicao"]
+                        all_cols,
+                        default=list(set(default_cols))
                     )
                 
                 # Preparar dados para exportação
                 df_export = df[incluir_colunas].copy()
                 
-                # Ajustar formato conforme seleção
-                if formato_data == "Ano-Mês" and "Ano_Mes" in df_export.columns:
+                # Renomear a coluna de competência selecionada para "Competencia"
+                coluna_data_nome = None
+                if formato_data == "Data Completa" and "Data" in df_export.columns:
+                    df_export = df_export.rename(columns={'Data': 'Competencia'})
+                    coluna_data_nome = 'Competencia'
+                elif formato_data == "Ano-Mês" and "Ano_Mes" in df_export.columns:
                     df_export = df_export.rename(columns={'Ano_Mes': 'Competencia'})
                 elif formato_data == "Original" and "Competencia_Original" in df_export.columns:
                     df_export = df_export.rename(columns={'Competencia_Original': 'Competencia'})
-                elif formato_data == "Data Completa" and "Data" in df_export.columns:
-                    df_export = df_export.rename(columns={'Data': 'Competencia'})
                 
-                # Download para Excel
+                # Exportação para Excel
                 st.subheader("Exportar para Excel")
                 
                 # Criar arquivo Excel em memória
                 output = BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                
+                # Usar a biblioteca openpyxl para aplicar formatação customizada
+                with pd.ExcelWriter(output, engine='openpyxl', datetime_format='dd/mm/yyyy') as writer:
                     df_export.to_excel(writer, sheet_name='Salarios_Contribuicao', index=False)
                     
                     # Ajustar formatação das colunas
@@ -140,9 +172,30 @@ def main():
                     
                     # Formatar coluna de salário como moeda
                     if 'Salario_Contribuicao' in df_export.columns:
-                        salario_col = df_export.columns.get_loc('Salario_Contribuicao') + 1
+                        salario_col_idx = df_export.columns.get_loc('Salario_Contribuicao')
+                        # O openpyxl usa indexação base 1 (A=1, B=2...)
+                        salario_col = salario_col_idx + 1
+                        
+                        # Criar formato de moeda (português/brasileiro)
+                        money_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                        
                         for row in range(2, len(df_export) + 2):
                             worksheet.cell(row=row, column=salario_col).number_format = '#,##0.00'
+                    
+                    # ------------------------------------------------------------------
+                    # CORREÇÃO CRÍTICA: Forçar formato de Data (DD/MM/AAAA) no Excel
+                    # ------------------------------------------------------------------
+                    if coluna_data_nome == 'Competencia' and formato_data == "Data Completa":
+                        data_col_idx = df_export.columns.get_loc('Competencia')
+                        data_col = data_col_idx + 1
+                        
+                        # Aplicar formato de data 'dd/mm/yyyy' em todas as células de dados
+                        for row in range(2, len(df_export) + 2):
+                            cell = worksheet.cell(row=row, column=data_col)
+                            # Se o valor é um datetime, aplica o formato
+                            if isinstance(cell.value, datetime):
+                                cell.number_format = 'dd/mm/yyyy'
+                    # ------------------------------------------------------------------
                 
                 excel_data = output.getvalue()
                 
@@ -169,15 +222,13 @@ def main():
         st.markdown("""
         ### Formatos de Competência Disponíveis:
         
-        - **Data Completa**: Data real (01/MM/AAAA) - Ideal para fórmulas Excel
-        - **Ano-Mês**: Formato "AAAA-MM" - Padrão internacional
-        - **Original**: Formato "Mmm/AA" - Como aparece no PDF
+        - **Data Completa**: Exporta como `01/MM/AAAA`. **Recomendado para fórmulas e cálculos de data no Excel.**
+        - **Ano-Mês**: Formato `"AAAA-MM"` - Padrão internacional para agrupar.
+        - **Original**: Formato `"Mmm/AA"` - Como aparece no PDF.
         
-        ### Para usar no Excel:
+        ### Dica de Compatibilidade:
         
-        1. Use o formato **"Data Completa"** se quiser fazer cálculos com datas
-        2. Use **"Ano-Mês"** se quiser agrupar por período
-        3. Use **PROCV** ou **PROCH** normalmente com qualquer formato
+        Sempre escolha **"Data Completa"** se o objetivo for usar a competência em fórmulas que dependem de datas (ex: `DIAS360`, `DATADIF`, etc.) no Excel. O sistema garante que o formato `01/MM/AAAA` seja aplicado na coluna.
         """)
 
 if __name__ == "__main__":
