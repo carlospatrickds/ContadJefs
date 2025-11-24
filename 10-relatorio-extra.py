@@ -14,8 +14,9 @@ from reportlab.lib.units import cm
 # ------------------------------------------------------------
 st.set_page_config(page_title="Relatório Serviço Extraordinário", layout="wide")
 
+# REGEX ATUALIZADA para aceitar uma letra maiúscula opcional ([A-Z]?) no final do processo
 REGEX = re.compile(
-    r"(\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4})\s+(\d{2}\/\d{2}\/\d{4})\s+(\d+)"
+    r"(\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}[A-Z]?)\s+(\d{2}\/\d{2}\/\d{4})\s+(\d+)"
 )
 
 PASTA_MENSAL = "base_mensal"
@@ -33,9 +34,13 @@ def extrair_processos(pdf_file):
             if not texto:
                 continue
             encontrados = REGEX.findall(texto)
-            for processo, data, seq in encontrados:
+            for processo_bruto, data, seq in encontrados:
+                
+                # LIMPEZA: Remove a letra no final do processo (T, S, etc.), se existir.
+                processo_limpo = re.sub(r'[A-Z]$', '', processo_bruto)
+                
                 dados.append({
-                    "processo": processo,
+                    "processo": processo_limpo,  # Usa o processo limpo
                     "data": pd.to_datetime(data, dayfirst=True),
                     "sequencial": int(seq)
                 })
@@ -130,14 +135,12 @@ if aba == "Upload mensal":
             df["data"] = df["data"].dt.strftime("%d/%m/%Y") # remove hora
             df = df.drop(columns=["sequencial"])          # remove sequencial
 
-            # === CORREÇÃO APLICADA AQUI ===
-            # Cria e formata a coluna 'nº' em uma única operação para evitar o AttributeError
+            # Cria e formata a coluna 'nº' em uma única operação.
             df.insert(
                 0, 
                 "nº", 
                 (df.reset_index().index + 1).astype(str).str.zfill(2)
             )
-            # ==============================
 
             salvar_mensal(mes_ano, df)
 
