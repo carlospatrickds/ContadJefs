@@ -87,8 +87,9 @@ def gerar_pdf(titulo, df, observacoes=""):
     # 2. Observações (Acima das tabelas)
     if observacoes:
         Story.append(Paragraph("<b>Observações:</b>", styles['SubHeader']))
-        for linha in observacoes.split('\n'):
-            Story.append(Paragraph(linha, styles['NormalLeft']))
+        # Usando <br/> para quebras de linha no ReportLab
+        obs_formatada = observacoes.replace('\n', '<br/>')
+        Story.append(Paragraph(obs_formatada, styles['NormalLeft']))
         Story.append(Paragraph("<br/>", styles['NormalLeft']))
 
     # 3. Tabela de Totais por Mês
@@ -98,14 +99,16 @@ def gerar_pdf(titulo, df, observacoes=""):
         # Ordena os meses para exibição
         meses_ordem = {m: i for i, m in enumerate(MESES_ANUAL)}
         totais_mes['order'] = totais_mes['mes'].map(meses_ordem)
+        # Se um mês não estiver na lista (e.g., nome antigo), ele vai para o final
+        totais_mes['order'] = totais_mes['order'].fillna(len(MESES_ANUAL)).astype(int)
         totais_mes = totais_mes.sort_values(by='order').drop(columns='order')
         
         dados_tabela = [["Mês", "Total de Processos"]]
         for _, row in totais_mes.iterrows():
             dados_tabela.append([row['mes'], str(row['Total'])])
 
-        # Total Geral
-        dados_tabela.append(['<b>Total Geral</b>', f'<b>{len(df)}</b>'])
+        # Total Geral (CORRIGINDO O NEGRITO COM TAG <font>)
+        dados_tabela.append([f'<font size=10><b>Total Geral</b></font>', f'<font size=10><b>{len(df)}</b></font>'])
         
         Story.append(Paragraph("<b>Totais de Processos por Mês:</b>", styles['SubHeader']))
         
@@ -124,15 +127,23 @@ def gerar_pdf(titulo, df, observacoes=""):
 
     # 4. Lista de Processos (Ordenada Cronologicamente e Re-numerada)
     
-    # === CORREÇÃO: Remove 'nº' se já existir (evita ValueError) ===
+    # CORREÇÃO 1: Remove 'nº' se já existir (evita ValueError)
     if 'nº' in df.columns:
         df = df.drop(columns=["nº"])
-    # =============================================================
     
+    # CORREÇÃO 2: Garante que a coluna 'data' esteja em formato datetime para ordenação
+    # e depois formata como string sem a hora.
+    try:
+        df['data_dt'] = pd.to_datetime(df['data'], format='%d/%m/%Y', errors='coerce')
+    except ValueError:
+        # Se houver erro de formato (como no Excel sem formatação), tenta inferir
+        df['data_dt'] = pd.to_datetime(df['data'], errors='coerce')
+        
+    df['data'] = df['data_dt'].dt.strftime("%d/%m/%Y") # Limpa a data, removendo 00:00:00
+
     Story.append(Paragraph("<b>Lista detalhada de processos (Ordem Cronológica):</b>", styles['SubHeader']))
     
-    # Garante a ordem cronológica
-    df['data_dt'] = pd.to_datetime(df['data'], format='%d/%m/%Y')
+    # Ordenação final
     df = df.sort_values(by=['data_dt', 'processo'])
     df = df.drop(columns='data_dt')
     
@@ -143,6 +154,7 @@ def gerar_pdf(titulo, df, observacoes=""):
         n_sequencial = f"{row['nº']}."
         
         # Formato: 1. PROCESSO — 08/11/2025
+        # Usando Paragraph para lidar com quebra de linha de forma automática se necessário
         texto = f"{n_sequencial} {row['processo']} — {row['data']}"
         Story.append(Paragraph(texto, styles['NormalLeft']))
         
@@ -193,7 +205,8 @@ if aba == "Upload de Múltiplos Meses":
 
                     if lista:
                         df = pd.DataFrame(lista)
-                        df["data"] = df["data"].dt.strftime("%d/%m/%Y")
+                        # A data é salva em formato datetime para facilitar a leitura no Excel, mas será formatada no PDF
+                        df["data"] = df["data"].dt.strftime("%d/%m/%Y") 
                         df = df.drop(columns=["sequencial"])
 
                         # Cria a coluna 'nº' apenas para fins internos, é usada no arquivo Excel
@@ -283,8 +296,10 @@ elif aba == "Consolidado geral":
         df_final = pd.concat(lista)
         
         st.subheader("Observações")
+        # Criamos o campo de observação ANTES de chamar o download
         obs_geral = st.text_area("Digite observações gerais para o consolidado:")
 
+        # Passamos a observação para a função gerar_pdf
         pdf_buffer = gerar_pdf("Relatório Consolidado", df_final, obs_geral)
         
         st.download_button(
