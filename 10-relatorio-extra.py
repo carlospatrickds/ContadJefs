@@ -3,29 +3,35 @@ import pdfplumber
 import pandas as pd
 import re
 import os
-from datetime import datetime
+import shutil
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import cm
 
+# ------------------------------------------------------------
+# Configurações do app
+# ------------------------------------------------------------
 st.set_page_config(page_title="Relatório Serviço Extraordinário", layout="wide")
 
-# Regex para capturar: processo | data | sequencial
 REGEX = re.compile(
-    r"(\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\d+)"
+    r"(\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4})\s+(\d{2}\/\d{2}\/\d{4})\s+(\d+)"
 )
 
-# Pastas
 PASTA_MENSAL = "base_mensal"
 os.makedirs(PASTA_MENSAL, exist_ok=True)
 
 
+# ------------------------------------------------------------
+# Função para extrair processos
+# ------------------------------------------------------------
 def extrair_processos(pdf_file):
-    """Extrai processos de um PDF usando regex."""
     dados = []
     with pdfplumber.open(pdf_file) as pdf:
         for page in pdf.pages:
             texto = page.extract_text()
             if not texto:
                 continue
-
             encontrados = REGEX.findall(texto)
             for processo, data, seq in encontrados:
                 dados.append({
@@ -36,6 +42,9 @@ def extrair_processos(pdf_file):
     return dados
 
 
+# ------------------------------------------------------------
+# Funções para salvar e carregar
+# ------------------------------------------------------------
 def salvar_mensal(mes_ano, df):
     caminho = os.path.join(PASTA_MENSAL, f"{mes_ano}.xlsx")
     df.to_excel(caminho, index=False)
@@ -43,15 +52,57 @@ def salvar_mensal(mes_ano, df):
 
 def carregar_mensal(mes_ano):
     caminho = os.path.join(PASTA_MENSAL, f"{mes_ano}.xlsx")
-    return pd.read_excel(caminho, parse_dates=["data"])
+    return pd.read_excel(caminho)
 
 
-# ----------------------------------------------------------------------------------------------------
-# ABA 1 – Upload Mensal
-# ----------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------
+# Função para gerar PDF
+# ------------------------------------------------------------
+def gerar_pdf(titulo, df, observacoes=""):
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4)
+    largura, altura = A4
+    y = altura - 2*cm
 
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(2*cm, y, titulo)
+    y -= 1.2 * cm
+
+    pdf.setFont("Helvetica", 11)
+    for linha in observacoes.split("\n"):
+        pdf.drawString(2*cm, y, linha)
+        y -= 0.7 * cm
+
+    y -= 0.8 * cm
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(2*cm, y, "Lista de processos:")
+    y -= 1 * cm
+
+    pdf.setFont("Helvetica", 10)
+
+    for _, row in df.iterrows():
+        texto = f"{row['nº']}. {row['processo']} — {row['data']}"
+        pdf.drawString(2*cm, y, texto)
+        y -= 0.6 * cm
+
+        if y < 2*cm:
+            pdf.showPage()
+            pdf.setFont("Helvetica", 10)
+            y = altura - 2*cm
+
+    pdf.save()
+    buffer.seek(0)
+    return buffer
+
+
+# ============================================================
+#                      INTERFACE DO APP
+# ============================================================
 aba = st.sidebar.radio("Menu", ["Upload mensal", "Relatório mensal", "Consolidado geral"])
 
+# ------------------------------------------------------------
+# 1) UPLOAD MENSAL
+# ------------------------------------------------------------
 if aba == "Upload mensal":
     st.header("📁 Upload dos PDFs do mês")
 
@@ -60,20 +111,13 @@ if aba == "Upload mensal":
         ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
          "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
     )
-    ano = st.number_input("Ano", min_value=2020, max_value=2030, value=2025)
-
+    ano = st.number_input("Ano", min_value=2020, max_value=2035, value=2025)
     mes_ano = f"{mes}_{ano}"
 
-    arquivos = st.file_uploader(
-        "Envie os PDFs do mês",
-        type=["pdf"],
-        accept_multiple_files=True
-    )
+    arquivos = st.file_uploader("Envie os PDFs", type=["pdf"], accept_multiple_files=True)
 
     if arquivos:
-        st.info("Processando arquivos…")
         lista = []
-
         for arq in arquivos:
             dados = extrair_processos(arq)
             for d in dados:
@@ -82,80 +126,117 @@ if aba == "Upload mensal":
 
         if lista:
             df = pd.DataFrame(lista)
-            df = df.sort_values(by=["data", "processo"])
+
+            df["data"] = df["data"].dt.strftime("%d/%m/%Y")  # remove hora
+            df = df.drop(columns=["sequencial"])             # remove sequencial
+
+            df.insert(0, "nº", df.reset_index().index + 1)
+            df["nº"] = df["nº"].astype(str).zfill(2)
+
             salvar_mensal(mes_ano, df)
 
-            st.success(f"Arquivo mensal salvo: {mes_ano}.xlsx")
+            st.success(f"Mês salvo como {mes_ano}.xlsx")
             st.dataframe(df, height=500)
         else:
-            st.warning("Nenhum processo encontrado nos PDFs enviados.")
+            st.warning("Nenhum processo encontrado.")
 
 
-# ----------------------------------------------------------------------------------------------------
-# ABA 2 – Relatório Mensal
-# ----------------------------------------------------------------------------------------------------
-
+# ------------------------------------------------------------
+# 2) RELATÓRIO MENSAL
+# ------------------------------------------------------------
 elif aba == "Relatório mensal":
-    st.header("📊 Relatório do mês")
+    st.header("📊 Relatório mensal")
 
     arquivos_mensais = sorted([f.replace(".xlsx", "") for f in os.listdir(PASTA_MENSAL)])
 
     if not arquivos_mensais:
-        st.warning("Nenhum mês processado ainda.")
+        st.warning("Nenhum mês encontrado.")
     else:
         mes_ano = st.selectbox("Selecione o mês:", arquivos_mensais)
         df = carregar_mensal(mes_ano)
 
+        st.subheader("🧹 Ferramentas de limpeza")
+        col1, col2 = st.columns(2)
+
+        if col1.button("Apagar este mês"):
+            caminho = os.path.join(PASTA_MENSAL, f"{mes_ano}.xlsx")
+            os.remove(caminho)
+            st.success(f"{mes_ano} apagado.")
+            st.stop()
+
+        if col2.button("Apagar TODOS os meses"):
+            shutil.rmtree(PASTA_MENSAL)
+            os.makedirs(PASTA_MENSAL, exist_ok=True)
+            st.success("Todos os meses foram apagados.")
+            st.stop()
+
         st.subheader(f"📌 Resumo de {mes_ano}")
-        st.write(f"**Total de processos:** {len(df)}")
+        st.write(f"**Total:** {len(df)} processos")
 
-        # Total por dia
-        total_por_dia = df.groupby(df["data"].dt.strftime("%d/%m/%Y")).size()
-
-        st.subheader("Totais por data")
-        st.table(total_por_dia)
+        total_por_data = df.groupby("data").size()
+        st.table(total_por_data)
 
         st.subheader("Tabela completa")
         st.dataframe(df, height=500)
 
+        st.subheader("Observações")
+        observacoes = st.text_area("Digite informações adicionais:")
+
+        pdf_buffer = gerar_pdf(f"Relatório Mensal — {mes_ano}", df, observacoes)
+
         st.download_button(
-            "Baixar Excel do mês",
-            df.to_excel(index=False, engine="openpyxl"),
-            file_name=f"{mes_ano}.xlsx"
+            "📄 Baixar PDF",
+            data=pdf_buffer,
+            file_name=f"Relatorio_{mes_ano}.pdf",
+            mime="application/pdf"
         )
 
-# ----------------------------------------------------------------------------------------------------
-# ABA 3 – Consolidado Geral
-# ----------------------------------------------------------------------------------------------------
 
+# ------------------------------------------------------------
+# 3) CONSOLIDADO GERAL
+# ------------------------------------------------------------
 elif aba == "Consolidado geral":
-    st.header("📑 Consolidado geral")
+    st.header("📑 Relatório Consolidado")
 
-    arquivos_mensais = [f for f in os.listdir(PASTA_MENSAL)]
-    if not arquivos_mensais:
-        st.warning("Nenhum mês processado ainda.")
+    arquivos = os.listdir(PASTA_MENSAL)
+    if not arquivos:
+        st.warning("Nenhum mês encontrado.")
     else:
         lista = []
-        for arquivo in arquivos_mensais:
+        for arquivo in arquivos:
             mes_ano = arquivo.replace(".xlsx", "")
             df = carregar_mensal(mes_ano)
             df["mes"] = mes_ano
             lista.append(df)
 
-        df_final = pd.concat(lista).sort_values(by=["data"])
+        df_final = pd.concat(lista)
+
+        st.subheader("🧹 Limpeza")
+        col1, col2 = st.columns(2)
+
+        if col1.button("Apagar TODOS os meses"):
+            shutil.rmtree(PASTA_MENSAL)
+            os.makedirs(PASTA_MENSAL, exist_ok=True)
+            st.success("Todos os meses foram apagados.")
+            st.stop()
 
         st.subheader("Totais por mês")
-        total_mes = df_final.groupby("mes").size()
-        st.table(total_mes)
+        st.table(df_final.groupby("mes").size())
 
         st.subheader("Total geral")
         st.write(f"**{len(df_final)} processos**")
 
-        st.subheader("Tabela consolidada")
+        st.subheader("Tabela completa")
         st.dataframe(df_final, height=600)
 
+        st.subheader("Observações")
+        obs_geral = st.text_area("Digite observações gerais:")
+
+        pdf_buffer = gerar_pdf("Relatório Consolidado", df_final, obs_geral)
+
         st.download_button(
-            "Baixar consolidado (Excel)",
-            df_final.to_excel(index=False, engine="openpyxl"),
-            file_name="consolidado_servico_extra.xlsx"
+            "📄 Baixar PDF Consolidado",
+            data=pdf_buffer,
+            file_name="Relatorio_Consolidado.pdf",
+            mime="application/pdf"
         )
