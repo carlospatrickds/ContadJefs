@@ -11,32 +11,27 @@ from openpyxl.styles import numbers
 # ------------------------------------------------------------
 
 def converter_competencia(competencia):
-    """Converte competência no formato 'Mmm/AA' para data válida"""
+    """Converte competência no formato 'MM/AAAA' para data válida"""
     try:
-        # Mapeamento de meses em português para inglês
-        meses_pt_en = {
-            'jan': 'Jan', 'fev': 'Feb', 'mar': 'Mar', 'abr': 'Apr', 'mai': 'May', 'jun': 'Jun',
-            'jul': 'Jul', 'ago': 'Aug', 'set': 'Sep', 'out': 'Oct', 'nov': 'Nov', 'dez': 'Dec'
-        }
-        
         # Remove R$ e caracteres que não são da competência
-        competencia = re.sub(r'[^a-z0-9/]', '', competencia.lower())
-
-        mes_pt, ano = competencia.split('/')
-        mes_en = meses_pt_en.get(mes_pt.lower(), mes_pt)
+        competencia = re.sub(r'[^0-9/]', '', competencia)
         
-        # Se o ano tem 2 dígitos, converter para 4 dígitos
-        if len(ano) == 2:
-            # Assumimos que anos <= 50 são do século 21 (20XX) e > 50 são do século 20 (19XX)
-            ano = '19' + ano if int(ano) > 50 else '20' + ano
-        
-        # Criar data no primeiro dia do mês
-        data = datetime.strptime(f'01/{mes_en}/{ano}', '%d/%b/%Y')
-        return data
-        
+        if '/' in competencia:
+            mes, ano = competencia.split('/')
+            
+            # Se o ano tem 2 dígitos, converter para 4 dígitos
+            if len(ano) == 2:
+                ano = '20' + ano if int(ano) <= 50 else '19' + ano
+            
+            # Criar data no primeiro dia do mês
+            data = datetime.strptime(f'01/{mes}/{ano}', '%d/%m/%Y')
+            return data
+            
     except Exception:
-        # Se não conseguir converter, retorna a competência original
-        return competencia
+        pass
+    
+    # Se não conseguir converter, retorna a competência original
+    return competencia
 
 def formatar_salario_para_float(salario_str):
     """Converte string de salário no formato brasileiro (X.XXX,XX) para float."""
@@ -75,12 +70,12 @@ def processar_registro(competencia_str, salario_str, modelo):
     return None
 
 # ------------------------------------------------------------
-# Funções de extração de dados - MODELO 1 (Seu código original - Padrão RMI com Regex)
+# Funções de extração de dados - MODELO 1 (Específico para o PDF fornecido)
 # ------------------------------------------------------------
 
 def extract_data_from_pdf_model1(pdf_file):
-    """Extrai dados do PDF do Modelo 1 (Padrão RMI com Regex)."""
-    st.info("Modelo 1 selecionado: Extração via Regex (padrão 'Mmm/AA' e valor próximo).")
+    """Extrai dados do PDF do Modelo 1 (Específico para a estrutura do PDF fornecido)."""
+    st.info("Modelo 1 selecionado: Extração específica para estrutura de tabela do PDF.")
     data = []
     
     # Resetar o ponteiro do arquivo
@@ -88,27 +83,57 @@ def extract_data_from_pdf_model1(pdf_file):
 
     with pdfplumber.open(pdf_file) as pdf:
         for page in pdf.pages:
+            # Extrai o texto completo da página
             text = page.extract_text()
             
-            # Encontrar linhas com dados de competência e salário
+            # Divide o texto em linhas
             lines = text.split('\n')
             
+            # Procura pelas linhas que contêm dados de contribuição
             for line in lines:
-                # O padrão mais solto que você estava usando no final, que funciona bem para o PDF fornecido.
-                # Procura por "Mmm/AA" seguido de um número monetário brasileiro (com ponto opcional como milhar e vírgula como decimal).
-                pattern = r'([a-z]{3}/\d{2,4})\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})'
-                matches = re.findall(pattern, line.lower())
+                # Padrão para identificar linhas com dados: número + data (MM/AAAA) + valores
+                # Exemplo: "001 07/1994 R$ 309,24 582,86 309,24 7,521684 R$ 2.326,01"
+                pattern = r'^\s*(\d{2,3})\s+(\d{2}/\d{4})\s+R\$\s*([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)\s+R\$\s*([\d\.,]+)'
+                match = re.search(pattern, line.strip())
                 
-                if not matches:
-                     # Tenta o padrão mais solto (data e valor separados por espaço, sem R$)
-                     pattern = r'([a-z]{3}/\d{2,4})\s+(\d{1,3}(?:\.\d{3})*,\d{2})'
-                     matches = re.findall(pattern, line.lower())
-                
-                for match in matches:
-                    competencia, salario = match
-                    registro = processar_registro(competencia, salario, "Modelo 1")
+                if match:
+                    numero, competencia, salario_contribuicao, teto, salario_considerado, indice, salario_corrigido = match.groups()
+                    
+                    # Usa o salário de contribuição (terceira coluna)
+                    registro = processar_registro(competencia, salario_contribuicao, "Modelo 1")
                     if registro:
                         data.append(registro)
+                
+                # Tenta um padrão mais simples se o primeiro não funcionar
+                else:
+                    # Procura por padrão MM/AAAA seguido de valores monetários
+                    simple_pattern = r'(\d{2}/\d{4})\s+R\$\s*([\d\.,]+)'
+                    matches = re.findall(simple_pattern, line)
+                    
+                    for competencia, salario in matches:
+                        registro = processar_registro(competencia, salario, "Modelo 1")
+                        if registro:
+                            data.append(registro)
+    
+    # Se não encontrou dados com o padrão de tabela, tenta uma abordagem mais genérica
+    if not data:
+        st.warning("Padrão de tabela não encontrado. Tentando extração genérica...")
+        pdf_file.seek(0)
+        
+        with pdfplumber.open(pdf_file) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                lines = text.split('\n')
+                
+                for line in lines:
+                    # Procura por qualquer padrão de data MM/AAAA seguido de valor
+                    pattern = r'(\d{2}/\d{4})\s+[^\n]*?R\$\s*([\d\.,]+)'
+                    matches = re.findall(pattern, line)
+                    
+                    for competencia, salario in matches:
+                        registro = processar_registro(competencia, salario, "Modelo 1")
+                        if registro:
+                            data.append(registro)
     
     return pd.DataFrame(data)
 
@@ -117,10 +142,8 @@ def extract_data_from_pdf_model1(pdf_file):
 # ------------------------------------------------------------
 
 def extract_data_from_pdf_model2(pdf_file):
-    """Extrai dados do PDF do Modelo 2 (Padrão Tabela Estruturada).
-    Aprimorado para ser mais tolerante com quebras de linha e nomes de coluna.
-    """
-    st.info("Modelo 2 selecionado: Extração via Tabela Estruturada (Aprimorada para mais tolerância).")
+    """Extrai dados do PDF do Modelo 2 (Extração de Tabelas Estruturadas)."""
+    st.info("Modelo 2 selecionado: Extração via Tabela Estruturada.")
     data = []
     
     # Resetar o ponteiro do arquivo
@@ -135,49 +158,42 @@ def extract_data_from_pdf_model2(pdf_file):
                 if not table or len(table) < 2:
                     continue
 
-                # Normaliza e limpa a linha de cabeçalho
-                header = [
-                    (col.strip().lower().replace('\n', ' ') if col else '')
-                    for col in table[0]
-                ]
-                
-                # Procura por colunas de Data/Competência
-                data_keywords = ['data', 'competência', 'periodo']
+                # Procura pela linha de cabeçalho
+                header_found = False
                 data_col_index = -1
-                for i, h in enumerate(header):
-                    if any(kw in h for kw in data_keywords):
-                        data_col_index = i
+                salario_col_index = -1
+                
+                for i, row in enumerate(table):
+                    if not row:
+                        continue
+                        
+                    # Converte toda a linha para string e junta para análise
+                    row_text = ' '.join([str(cell) if cell else '' for cell in row]).lower()
+                    
+                    # Procura por cabeçalhos que indiquem as colunas que precisamos
+                    if 'data' in row_text and any(word in row_text for word in ['salário', 'contribuição']):
+                        header_found = True
+                        
+                        # Encontra os índices das colunas
+                        for j, cell in enumerate(row):
+                            if cell and 'data' in str(cell).lower():
+                                data_col_index = j
+                            if cell and any(word in str(cell).lower() for word in ['salário', 'contribuição']):
+                                salario_col_index = j
                         break
                 
-                # Procura por colunas de Salário
-                salario_keywords = ['salário de contribuição', 'salario', 'valor considerado']
-                salario_col_index = -1
-                for i, h in enumerate(header):
-                    if any(kw in h for kw in salario_keywords):
-                        # Pega o primeiro match, mas prefere "Salário de Contribuição" se existir
-                        if 'salário de contribuição' in h:
-                            salario_col_index = i
-                            break
-                        elif salario_col_index == -1:
-                            salario_col_index = i
-
-                # Verifica se ambas as colunas foram encontradas
-                if data_col_index == -1 or salario_col_index == -1:
-                    continue
-
-                # Processa as linhas de dados (a partir da segunda linha)
-                max_index = max(data_col_index, salario_col_index)
-                for row in table[1:]:
-                    # Garante que a linha não é vazia e tem colunas suficientes
-                    if row and len(row) > max_index:
-                        competencia = row[data_col_index]
-                        salario = row[salario_col_index]
-
-                        if competencia and salario:
-                            registro = processar_registro(competencia, salario, "Modelo 2")
-                            if registro:
-                                data.append(registro)
-                                
+                # Se encontrou o cabeçalho, processa as linhas seguintes
+                if header_found and data_col_index != -1 and salario_col_index != -1:
+                    for row in table[i+1:]:
+                        if row and len(row) > max(data_col_index, salario_col_index):
+                            competencia = row[data_col_index]
+                            salario = row[salario_col_index]
+                            
+                            if competencia and salario:
+                                registro = processar_registro(str(competencia), str(salario), "Modelo 2")
+                                if registro:
+                                    data.append(registro)
+    
     return pd.DataFrame(data)
 
 # ------------------------------------------------------------
@@ -191,9 +207,9 @@ def main():
     # Seletor do modelo de planilha
     extraction_model = st.radio(
         "Selecione o Modelo de Planilha PDF:",
-        ["Modelo 1 (Padrão RMI INSS - Regex)", "Modelo 2 (Padrão Tabela Estruturada)"],
+        ["Modelo 1 (Extração Específica)", "Modelo 2 (Tabela Estruturada)"],
         index=0,
-        help="Modelo 1 usa reconhecimento de texto por padrão de data/valor. Modelo 2 usa detecção de tabelas estruturadas."
+        help="Modelo 1 é otimizado para a estrutura do PDF fornecido. Modelo 2 usa detecção genérica de tabelas."
     )
 
     # Upload do arquivo
@@ -209,7 +225,6 @@ def main():
 
             # Extrair dados do PDF
             with st.spinner(f"Processando arquivo PDF com {extraction_model}..."):
-                # Passa o arquivo, mas não se esquece de resetar o ponteiro dentro da função, caso a função chame o seek()
                 df = extraction_func(uploaded_file)
             
             if not df.empty:
@@ -221,12 +236,10 @@ def main():
 
                 # Mostrar preview dos dados
                 st.subheader("Prévia dos Dados")
-                # Formata a coluna 'Data' para exibir DD/MM/AAAA no Streamlit
                 df_display = df.copy()
                 if 'Data' in df_display.columns and pd.api.types.is_datetime64_any_dtype(df_display['Data']):
                     df_display['Data'] = df_display['Data'].dt.strftime('%d/%m/%Y')
                     
-                # Exibir colunas relevantes para o usuário
                 st.dataframe(df_display[['Modelo', 'Competencia_Original', 'Data', 'Salario_Contribuicao']].head(20))
                 
                 # Estatísticas básicas
@@ -234,7 +247,7 @@ def main():
                 df_filtered = df[pd.api.types.is_datetime64_any_dtype(df['Data'])].sort_values('Data')
 
                 with col1:
-                    st.metric("Total de Registros Válidos", len(df_filtered))
+                    st.metric("Total de Registros", len(df_filtered))
                 
                 if not df_filtered.empty:
                     with col2:
@@ -254,7 +267,6 @@ def main():
                         key="formato_data_radio"
                     )
                 
-                # Lógica para determinar as colunas a incluir
                 data_col_map = {
                     "Data Completa": "Data",
                     "Ano-Mês": "Ano_Mes",
@@ -281,42 +293,22 @@ def main():
                 if coluna_data_selecionada in df_export.columns and coluna_data_selecionada != "Competencia":
                     df_export = df_export.rename(columns={coluna_data_selecionada: 'Competencia'})
                 
-                coluna_data_nome = 'Competencia' if 'Competencia' in df_export.columns else coluna_data_selecionada
-
                 # Exportação para Excel
                 st.subheader("Exportar para Excel")
                 
-                # Criar arquivo Excel em memória
                 output = BytesIO()
                 
-                # Usar a biblioteca openpyxl para aplicar formatação customizada
                 with pd.ExcelWriter(output, engine='openpyxl', datetime_format='dd/mm/yyyy') as writer:
                     df_export.to_excel(writer, sheet_name='Salarios_Contribuicao', index=False)
                     
-                    # Ajustar formatação das colunas
                     workbook = writer.book
                     worksheet = writer.sheets['Salarios_Contribuicao']
                     
                     # Formatar coluna de salário como moeda
                     if 'Salario_Contribuicao' in df_export.columns:
                         salario_col_idx = df_export.columns.get_loc('Salario_Contribuicao')
-                        salario_col = salario_col_idx + 1
-                        
-                        # Aplicar formato numérico brasileiro
                         for row in range(2, len(df_export) + 2):
-                            worksheet.cell(row=row, column=salario_col).number_format = '#,##0.00'
-                        
-                    # Forçar formato de Data (DD/MM/AAAA) no Excel
-                    if coluna_data_nome == 'Competencia' and formato_data == "Data Completa":
-                        data_col_idx = df_export.columns.get_loc('Competencia')
-                        data_col = data_col_idx + 1
-                        
-                        # Aplicar formato de data 'dd/mm/yyyy' em todas as células de dados
-                        for row in range(2, len(df_export) + 2):
-                            cell = worksheet.cell(row=row, column=data_col)
-                            # Se o valor é um datetime, aplica o formato
-                            if isinstance(cell.value, datetime):
-                                cell.number_format = 'dd/mm/yyyy'
+                            worksheet.cell(row=row, column=salario_col_idx + 1).number_format = '#,##0.00'
                 
                 excel_data = output.getvalue()
                 
@@ -327,35 +319,28 @@ def main():
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 
-                # Mostrar dados completos (todos, incluindo os que não foram convertidos para data)
-                st.subheader("Dados Completos (Com colunas de processamento)")
-                st.dataframe(df)
-                
             else:
-                st.warning(f"Nenhum dado foi extraído com sucesso usando o **{extraction_model}**. Verifique o formato do PDF ou tente o outro modelo.")
+                st.warning(f"Nenhum dado foi extraído com sucesso usando o **{extraction_model}**.")
                 
         except Exception as e:
             st.error(f"Erro ao processar o arquivo: {str(e)}")
-            st.info("Dica: Verifique se o PDF está legível e corresponde ao modelo de extração selecionado.")
             
     # Instruções
-    with st.expander("ℹ️ Instruções de Uso e Modelos"):
+    with st.expander("ℹ️ Instruções de Uso"):
         st.markdown("""
-        ### Formatos de Planilha Suportados:
+        ### Modelos de Extração:
         
-        **1. Modelo 1 (Padrão RMI INSS - Regex):**
-        - Ideal para relatórios de cálculo de RMI (Renda Mensal Inicial) do INSS.
-        - Usa um padrão de expressão regular (`Regex`) para buscar a competência (`Mmm/AA` ou `Mmm/AAAA`) e o valor de salário de contribuição próximo na mesma linha, mesmo que estejam fora de uma estrutura de tabela perfeita.
+        **Modelo 1 (Extração Específica):**
+        - Otimizado para a estrutura do PDF fornecido
+        - Procura por padrões específicos de tabela com números, datas MM/AAAA e valores
+        - Mais preciso para o formato do documento anexo
         
-        **2. Modelo 2 (Padrão Tabela Estruturada - Aprimorado):**
-        - **Mais tolerante.** Ideal para PDFs que contêm tabelas, mesmo com quebras de linha nos cabeçalhos ou dados.
-        - Procura por colunas que contenham os termos **"Data"**, **"Competência"** e **"Salário de Contribuição"** (ou similar).
+        **Modelo 2 (Tabela Estruturada):**
+        - Abordagem genérica para extração de tabelas
+        - Funciona bem com PDFs que têm estrutura de tabela clara
         
-        ### Dicas de Exportação:
-        
-        - **Data Completa**: Exporta como `01/MM/AAAA`. **Recomendado para fórmulas e cálculos de data no Excel.** O sistema garante o formato correto.
-        - **Ano-Mês**: Formato `"AAAA-MM"` - Padrão internacional para agrupar.
-        - **Original**: Formato `"Mmm/AA"` - Como aparece no PDF.
+        ### Dica:
+        Se o Modelo 1 não extrair todos os dados, tente o Modelo 2 como alternativa.
         """)
 
 if __name__ == "__main__":
