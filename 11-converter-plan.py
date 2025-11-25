@@ -57,6 +57,10 @@ def formatar_salario_para_float(salario_str):
 
 def processar_registro(competencia_str, salario_str, modelo):
     """Processa uma única linha de dados (competência e salário)."""
+    # Garante que as strings não sejam None
+    if competencia_str is None or salario_str is None:
+        return None
+        
     salario_float = formatar_salario_para_float(salario_str)
     competencia_data = converter_competencia(competencia_str)
     
@@ -79,6 +83,9 @@ def extract_data_from_pdf_model1(pdf_file):
     st.info("Modelo 1 selecionado: Extração via Regex (padrão 'Mmm/AA' e valor próximo).")
     data = []
     
+    # Resetar o ponteiro do arquivo
+    pdf_file.seek(0)
+
     with pdfplumber.open(pdf_file) as pdf:
         for page in pdf.pages:
             text = page.extract_text()
@@ -87,19 +94,13 @@ def extract_data_from_pdf_model1(pdf_file):
             lines = text.split('\n')
             
             for line in lines:
-                # Padrão original para identificar linhas com dados (ex: "jul/94 90,15")
-                # Garante que a linha tenha Mmm/AA ou Mmm/AAAA e um valor monetário brasileiro
+                # O padrão mais solto que você estava usando no final, que funciona bem para o PDF fornecido.
+                # Procura por "Mmm/AA" seguido de um número monetário brasileiro (com ponto opcional como milhar e vírgula como decimal).
                 pattern = r'([a-z]{3}/\d{2,4})\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})'
                 matches = re.findall(pattern, line.lower())
                 
-                # Seu padrão original, mas adaptado para o formato que você enviou:
-                # No PDF enviado, o R$ está entre a data e o valor, por isso ajustei o regex
                 if not matches:
-                    pattern = r'([a-z]{3}/\d{2,4})\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})'
-                    matches = re.findall(pattern, line.lower())
-
-                if not matches:
-                     # Tentativa de pegar o padrão mais solto (data e valor separados por espaço)
+                     # Tenta o padrão mais solto (data e valor separados por espaço, sem R$)
                      pattern = r'([a-z]{3}/\d{2,4})\s+(\d{1,3}(?:\.\d{3})*,\d{2})'
                      matches = re.findall(pattern, line.lower())
                 
@@ -116,34 +117,59 @@ def extract_data_from_pdf_model1(pdf_file):
 # ------------------------------------------------------------
 
 def extract_data_from_pdf_model2(pdf_file):
-    """Extrai dados do PDF do Modelo 2 (Padrão Tabela Estruturada)."""
-    st.info("Modelo 2 selecionado: Extração via Tabela Estruturada (Procura por tabelas com as colunas 'Data' e 'Salário de Contribuição').")
+    """Extrai dados do PDF do Modelo 2 (Padrão Tabela Estruturada).
+    Aprimorado para ser mais tolerante com quebras de linha e nomes de coluna.
+    """
+    st.info("Modelo 2 selecionado: Extração via Tabela Estruturada (Aprimorada para mais tolerância).")
     data = []
     
+    # Resetar o ponteiro do arquivo
+    pdf_file.seek(0)
+
     with pdfplumber.open(pdf_file) as pdf:
         for page in pdf.pages:
             # Tenta extrair tabelas
             tables = page.extract_tables()
             
             for table in tables:
-                if not table:
+                if not table or len(table) < 2:
                     continue
 
-                # A primeira linha é o cabeçalho.
-                header = [col.strip().replace('\n', ' ') for col in table[0] if col is not None]
+                # Normaliza e limpa a linha de cabeçalho
+                header = [
+                    (col.strip().lower().replace('\n', ' ') if col else '')
+                    for col in table[0]
+                ]
                 
-                # Identifica os índices das colunas relevantes
-                try:
-                    # Tenta identificar as colunas mais comuns em relatórios INSS (com variações)
-                    data_col_index = next(i for i, h in enumerate(header) if 'data' in h.lower() or 'competência' in h.lower())
-                    salario_col_index = next(i for i, h in enumerate(header) if 'salário de contribuição' in h.lower() or 'salário' in h.lower())
-                except StopIteration:
-                    # Se não encontrar as colunas principais, pula esta tabela
+                # Procura por colunas de Data/Competência
+                data_keywords = ['data', 'competência', 'periodo']
+                data_col_index = -1
+                for i, h in enumerate(header):
+                    if any(kw in h for kw in data_keywords):
+                        data_col_index = i
+                        break
+                
+                # Procura por colunas de Salário
+                salario_keywords = ['salário de contribuição', 'salario', 'valor considerado']
+                salario_col_index = -1
+                for i, h in enumerate(header):
+                    if any(kw in h for kw in salario_keywords):
+                        # Pega o primeiro match, mas prefere "Salário de Contribuição" se existir
+                        if 'salário de contribuição' in h:
+                            salario_col_index = i
+                            break
+                        elif salario_col_index == -1:
+                            salario_col_index = i
+
+                # Verifica se ambas as colunas foram encontradas
+                if data_col_index == -1 or salario_col_index == -1:
                     continue
 
                 # Processa as linhas de dados (a partir da segunda linha)
+                max_index = max(data_col_index, salario_col_index)
                 for row in table[1:]:
-                    if row and len(row) > max(data_col_index, salario_col_index):
+                    # Garante que a linha não é vazia e tem colunas suficientes
+                    if row and len(row) > max_index:
                         competencia = row[data_col_index]
                         salario = row[salario_col_index]
 
@@ -183,13 +209,14 @@ def main():
 
             # Extrair dados do PDF
             with st.spinner(f"Processando arquivo PDF com {extraction_model}..."):
+                # Passa o arquivo, mas não se esquece de resetar o ponteiro dentro da função, caso a função chame o seek()
                 df = extraction_func(uploaded_file)
             
             if not df.empty:
                 st.success(f"Dados extraídos com sucesso! {len(df)} registros encontrados.")
                 
                 # Ordenar por data se a coluna for datetime
-                if 'Data' in df.columns and df['Data'].dtype == 'datetime64[ns]':
+                if 'Data' in df.columns and pd.api.types.is_datetime64_any_dtype(df['Data']):
                     df = df.sort_values('Data').reset_index(drop=True)
 
                 # Mostrar preview dos dados
@@ -320,8 +347,8 @@ def main():
         - Ideal para relatórios de cálculo de RMI (Renda Mensal Inicial) do INSS.
         - Usa um padrão de expressão regular (`Regex`) para buscar a competência (`Mmm/AA` ou `Mmm/AAAA`) e o valor de salário de contribuição próximo na mesma linha, mesmo que estejam fora de uma estrutura de tabela perfeita.
         
-        **2. Modelo 2 (Padrão Tabela Estruturada):**
-        - Ideal para PDFs que contêm tabelas bem formatadas onde o cabeçalho das colunas é detectável.
+        **2. Modelo 2 (Padrão Tabela Estruturada - Aprimorado):**
+        - **Mais tolerante.** Ideal para PDFs que contêm tabelas, mesmo com quebras de linha nos cabeçalhos ou dados.
         - Procura por colunas que contenham os termos **"Data"**, **"Competência"** e **"Salário de Contribuição"** (ou similar).
         
         ### Dicas de Exportação:
