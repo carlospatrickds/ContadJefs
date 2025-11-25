@@ -21,6 +21,7 @@ def converter_competencia(competencia):
             # Garante que o mês tem 2 dígitos e o ano tem 4
             mes = mes.zfill(2)
             if len(ano) == 2:
+                # Regra simples para adivinhar o século
                 ano = '20' + ano if int(ano) <= 50 else '19' + ano
             
             # Criar data no primeiro dia do mês
@@ -238,6 +239,7 @@ def main():
                 
                 df_display = df.copy()
                 if 'Data' in df_display.columns and pd.api.types.is_datetime64_any_dtype(df_display['Data']):
+                    # Formata a coluna Data para visualização no Streamlit
                     df_display['Data'] = df_display['Data'].dt.strftime('%d/%m/%Y')
                 
                 # Selecionar colunas para exibir
@@ -298,32 +300,32 @@ def main():
                 
                 output = BytesIO()
                 
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    # Se exportando com datas, converter para formato de data pura (sem hora)
-                    if 'Data' in df_export.columns:
-                        # Criar uma cópia para exportação com datas formatadas como string no formato brasileiro
-                        df_export_excel = df_export.copy()
-                        df_export_excel['Data'] = df_export_excel['Data'].dt.strftime('%d/%m/%Y')
-                        df_export_excel.to_excel(writer, sheet_name='Salarios_Contribuicao', index=False)
-                    else:
-                        df_export.to_excel(writer, sheet_name='Salarios_Contribuicao', index=False)
+                # 1. Usamos datetime_format='dd/mm/yyyy' para formatar colunas datetime do Pandas.
+                with pd.ExcelWriter(output, engine='openpyxl', datetime_format='dd/mm/yyyy') as writer:
+                    df_export.to_excel(writer, sheet_name='Salarios_Contribuicao', index=False)
                     
                     workbook = writer.book
                     worksheet = writer.sheets['Salarios_Contribuicao']
                     
-                    # Formatar coluna de salário como moeda brasileira
+                    # 2. **NOVO AJUSTE:** Formatar explicitamente a coluna de Competência se for uma Data Completa.
+                    if coluna_data_selecionada == "Data" and 'Competencia' in df_export.columns:
+                        data_col_idx = df_export.columns.get_loc('Competencia')
+                        # Formato nativo do Excel para data/hora no padrão DD/MM/AAAA.
+                        date_excel_format = 'dd/mm/yyyy' 
+                        
+                        # Loop para aplicar o formato a todas as células da coluna (excluindo o cabeçalho)
+                        # O índice da coluna no openpyxl é baseado em 1, por isso + 1
+                        for row in range(2, len(df_export) + 2):
+                            worksheet.cell(row=row, column=data_col_idx + 1).number_format = date_excel_format
+                            
+                    # 3. Formatar coluna de salário como moeda brasileira (melhorando o formato)
                     if 'Salario_Contribuicao' in df_export.columns:
                         salario_col_idx = df_export.columns.get_loc('Salario_Contribuicao')
+                        # Formato de moeda brasileiro no Excel
+                        moeda_excel_format = 'R$ #,##0.00'
                         for row in range(2, len(df_export) + 2):
-                            worksheet.cell(row=row, column=salario_col_idx + 1).number_format = '#,##0.00'
+                            worksheet.cell(row=row, column=salario_col_idx + 1).number_format = moeda_excel_format
                     
-                    # Se estiver exportando a coluna Data, formatar como data brasileira
-                    if 'Data' in df_export.columns:
-                        data_col_idx = df_export.columns.get_loc('Data')
-                        for row in range(2, len(df_export) + 2):
-                            cell = worksheet.cell(row=row, column=data_col_idx + 1)
-                            cell.number_format = 'DD/MM/YYYY'  # Formato apenas de data, sem hora
-                
                 excel_data = output.getvalue()
                 
                 st.download_button(
@@ -368,7 +370,7 @@ def main():
         - Se um modelo não funcionar, tente o outro
         - Verifique sempre o total de registros extraídos
         - Use a opção "Mostrar todos os registros" para verificar dados completos
-        - O download em Excel mantém a formatação correta de datas (apenas data, sem hora)
+        - O download em Excel mantém a formatação correta de datas e valores
         """)
 
 if __name__ == "__main__":
