@@ -240,7 +240,7 @@ def main():
                 if 'Data' in df_display.columns and pd.api.types.is_datetime64_any_dtype(df_display['Data']):
                     df_display['Data'] = df_display['Data'].dt.strftime('%d/%m/%Y')
                     
-                st.dataframe(df_display[['Modelo', 'Competencia_Original', 'Data', 'Salario_Contribuicao']].head(20))
+                st.dataframe(df_display[['Modelo', 'Competencia_Original', 'Data', 'Salario_Contribuicao']].head(2000))
                 
                 # Estatísticas básicas
                 col1, col2, col3 = st.columns(3)
