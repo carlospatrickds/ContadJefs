@@ -298,8 +298,15 @@ def main():
                 
                 output = BytesIO()
                 
-                with pd.ExcelWriter(output, engine='openpyxl', datetime_format='dd/mm/yyyy') as writer:
-                    df_export.to_excel(writer, sheet_name='Salarios_Contribuicao', index=False)
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    # Se exportando com datas, converter para formato de data pura (sem hora)
+                    if 'Data' in df_export.columns:
+                        # Criar uma cópia para exportação com datas formatadas como string no formato brasileiro
+                        df_export_excel = df_export.copy()
+                        df_export_excel['Data'] = df_export_excel['Data'].dt.strftime('%d/%m/%Y')
+                        df_export_excel.to_excel(writer, sheet_name='Salarios_Contribuicao', index=False)
+                    else:
+                        df_export.to_excel(writer, sheet_name='Salarios_Contribuicao', index=False)
                     
                     workbook = writer.book
                     worksheet = writer.sheets['Salarios_Contribuicao']
@@ -309,6 +316,13 @@ def main():
                         salario_col_idx = df_export.columns.get_loc('Salario_Contribuicao')
                         for row in range(2, len(df_export) + 2):
                             worksheet.cell(row=row, column=salario_col_idx + 1).number_format = '#,##0.00'
+                    
+                    # Se estiver exportando a coluna Data, formatar como data brasileira
+                    if 'Data' in df_export.columns:
+                        data_col_idx = df_export.columns.get_loc('Data')
+                        for row in range(2, len(df_export) + 2):
+                            cell = worksheet.cell(row=row, column=data_col_idx + 1)
+                            cell.number_format = 'DD/MM/YYYY'  # Formato apenas de data, sem hora
                 
                 excel_data = output.getvalue()
                 
@@ -354,7 +368,7 @@ def main():
         - Se um modelo não funcionar, tente o outro
         - Verifique sempre o total de registros extraídos
         - Use a opção "Mostrar todos os registros" para verificar dados completos
-        - O download em Excel mantém a formatação correta de datas e valores
+        - O download em Excel mantém a formatação correta de datas (apenas data, sem hora)
         """)
 
 if __name__ == "__main__":
