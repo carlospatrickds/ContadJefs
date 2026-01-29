@@ -20,7 +20,7 @@ FIM_FICHA_RE = re.compile(r"TOTAL\s+L[IÍ]QUIDO", re.IGNORECASE)
 ANO_RE = re.compile(r"Ficha Financeira referente a:\s*(\d{4})", re.IGNORECASE)
 
 # ---------------- STREAMLIT ----------------
-st.set_page_config(page_title="Extrator SIAPE", layout="wide")
+st.set_page_config(page_title="Extrator SIAPE-FICHA_ANTIGA", layout="wide")
 st.title("📊 Extrator de Rubricas – Ficha Financeira SIAPE")
 
 pdf_file = st.file_uploader("Envie o PDF da Ficha Financeira", type="pdf")
