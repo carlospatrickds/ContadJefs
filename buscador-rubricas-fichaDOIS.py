@@ -82,7 +82,7 @@ def extrair_dados(pdf_bytes):
                         try:
                             rubrica = rubrica.encode("latin1").decode("utf-8")
                         except (UnicodeEncodeError, UnicodeDecodeError):
-                            pass.encode("latin1").decode("utf-8")
+                            pass
                         except (UnicodeEncodeError, UnicodeDecodeError):
                             rubrica = rubrica.encode('latin1').decode('utf-8')
                     except UnicodeEncodeError:
