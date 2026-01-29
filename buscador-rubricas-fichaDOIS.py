@@ -1,5 +1,5 @@
 # app.py
-# Extrator de Rubricas – Ficha Financeira (SIAPE)
+# Extrator de Rubricas – Ficha Financeira SIAPE (robusto por blocos)
 # Requisitos: streamlit, pdfplumber, pandas
 
 import streamlit as st
@@ -16,6 +16,10 @@ MESES = {
 
 VALOR_RE = re.compile(r"\d{1,3}(?:\.\d{3})*,\d{2}")
 
+INICIO_FICHA_RE = re.compile(r"Siape - Sistema Integrado de Administracao de Recursos Humanos", re.IGNORECASE)
+FIM_FICHA_RE = re.compile(r"TOTAL\s+L[IÍ]QUIDO", re.IGNORECASE)
+ANO_RE = re.compile(r"Ficha Financeira referente a:\s*(\d{4})", re.IGNORECASE)
+
 st.set_page_config(page_title="Extrator de Rubricas – SIAPE", layout="wide")
 st.title("📊 Extrator de Rubricas – Ficha Financeira SIAPE")
 
@@ -28,63 +32,81 @@ def extrair_dados(pdf_bytes):
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
         for page_num, page in enumerate(pdf.pages, start=1):
             texto = page.extract_text() or ""
-
-            # Ano de referência
-            ano_match = re.search(r"Ficha Financeira referente a:\s*(\d{4})", texto)
-            if not ano_match:
-                continue
-            ano = ano_match.group(1)
-
             linhas = texto.split("\n")
-            cabecalho_idx = None
 
-            for i, linha in enumerate(linhas):
-                if linha.strip().startswith("Rubrica|"):
-                    cabecalho_idx = i
-                    break
-
-            if cabecalho_idx is None:
-                continue
-
-            # Meses exatamente na ordem visual do cabeçalho
-            meses = []
-            for token in linhas[cabecalho_idx].split("|"):
-                t = token.strip()
-                if t in MESES:
-                    meses.append(t)
-
-            for linha in linhas[cabecalho_idx + 1:]:
-                if linha.strip().startswith("*****"):
-                    break
-
-                colunas = [c.strip() for c in linha.split("|")]
-                if len(colunas) < 5:
+            i = 0
+            while i < len(linhas):
+                # Detecta início de uma ficha
+                if not INICIO_FICHA_RE.search(linhas[i]):
+                    i += 1
                     continue
 
-                codigo = colunas[0]
-                rubrica = colunas[1]
-                tipo_rd = colunas[2]
+                bloco = []
+                i += 1
+                while i < len(linhas) and not FIM_FICHA_RE.search(linhas[i]):
+                    bloco.append(linhas[i])
+                    i += 1
 
-                # valores por coluna (posição importa!)
-                valores_por_coluna = []
-                for c in colunas:
-                    m = VALOR_RE.search(c)
-                    valores_por_coluna.append(m.group(0) if m else None)
+                bloco_texto = "\n".join(bloco)
 
-                for mes, valor in zip(meses, valores_por_coluna):
-                    if not valor:
+                ano_match = ANO_RE.search(bloco_texto)
+                if not ano_match:
+                    continue
+                ano = ano_match.group(1)
+
+                # Localiza cabeçalho da tabela
+                linhas_bloco = bloco_texto.split("\n")
+                cabecalho_idx = None
+                for idx, linha in enumerate(linhas_bloco):
+                    if linha.strip().startswith("Rubrica|"):
+                        cabecalho_idx = idx
+                        break
+
+                if cabecalho_idx is None:
+                    continue
+
+                # Meses na ordem visual
+                meses = []
+                for token in linhas_bloco[cabecalho_idx].split("|"):
+                    t = token.strip()
+                    if t in MESES:
+                        meses.append(t)
+
+                # Processa linhas até TOTAL LÍQUIDO ou fim do bloco
+                for linha in linhas_bloco[cabecalho_idx + 1:]:
+                    if FIM_FICHA_RE.search(linha):
+                        break
+
+                    colunas = [c.strip() for c in linha.split("|")]
+                    if len(colunas) < 5:
                         continue
 
-                    competencia = f"{MESES[mes]}/{ano}"
+                    codigo = colunas[0]
+                    rubrica = colunas[1]
+                    tipo_rd = colunas[2]
 
-                    registros.append({
-                        "Codigo": codigo,
-                        "Rubrica": rubrica,
-                        "Tipo": "Receita" if tipo_rd.strip() == "R" else "Despesa",
-                        "Competencia": competencia,
-                        "Valor": f"R$ {valor}",
-                        "Pagina": page_num
-                    })
+                    # Valores preservando posição por coluna
+                    valores = []
+                    for c in colunas:
+                        m = VALOR_RE.search(c)
+                        valores.append(m.group(0) if m else None)
+
+                    for mes, valor in zip(meses, valores):
+                        if not valor:
+                            continue
+
+                        competencia = f"{MESES[mes]}/{ano}"
+
+                        registros.append({
+                            "Codigo": codigo,
+                            "Rubrica": rubrica,
+                            "Tipo": "Receita" if tipo_rd.strip() == "R" else "Despesa",
+                            "Competencia": competencia,
+                            "Valor": f"R$ {valor}",
+                            "Pagina": page_num
+                        })
+
+                i += 1
 
     return pd.DataFrame(registros)
 
