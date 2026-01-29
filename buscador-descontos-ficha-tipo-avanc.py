@@ -23,8 +23,6 @@ class ConfiguradorUsuario:
     def __init__(self):
         self.config_file = "user_config.json"
         self.rubricas_favoritas_file = "rubricas_favoritas.pkl"
-        self.indices_file = "indices_correcao.json"
-        self.templates_file = "templates_relatorios.json"
     
     def salvar_configuracao(self, config: Dict):
         """Salva configurações do usuário"""
@@ -102,7 +100,7 @@ class CorrecaoMonetaria:
         return {
             '2020-01': 0.21, '2020-02': 0.25, '2020-03': 0.07,
             '2020-12': 4.52, '2021-12': 10.06, '2022-12': 5.79,
-            '2023-12': 4.62, '2024-12': 3.50  # exemplos
+            '2023-12': 4.62, '2024-12': 3.50
         }
     
     def carregar_indice_inpc(self) -> Dict[str, float]:
@@ -130,15 +128,6 @@ class CorrecaoMonetaria:
                       indice: str = 'IPCA') -> float:
         """
         Corrige um valor monetário usando índice escolhido
-        
-        Args:
-            valor: Valor original
-            data_original: Data no formato 'MM/AAAA'
-            data_correcao: Data para correção no formato 'MM/AAAA'
-            indice: Índice a ser usado ('IPCA', 'INPC', 'IGPM', 'SELIC')
-            
-        Returns:
-            Valor corrigido
         """
         try:
             if indice not in self.indices:
@@ -163,6 +152,9 @@ class CorrecaoMonetaria:
         """
         Aplica correção monetária a um DataFrame completo
         """
+        if df.empty:
+            return df
+        
         df_corrigido = df.copy()
         
         # Converte valores para numérico
@@ -201,6 +193,9 @@ class AnalisadorComparativo:
         """
         Analisa evolução anual de uma rubrica específica
         """
+        if df.empty:
+            return pd.DataFrame()
+        
         # Converte valores para numérico
         extrator = ExtratorDemonstrativos()
         df_numeric = df.copy()
@@ -215,17 +210,23 @@ class AnalisadorComparativo:
             return pd.DataFrame()
         
         # Agrupa por ano e mês
-        df_rubrica['Mes'] = df_rubrica['Competencia'].apply(lambda x: int(x.split('/')[0]))
-        df_rubrica['Ano'] = df_rubrica['Competencia'].apply(lambda x: int(x.split('/')[1]))
+        try:
+            df_rubrica['Mes'] = df_rubrica['Competencia'].apply(lambda x: int(x.split('/')[0]))
+            df_rubrica['Ano'] = df_rubrica['Competencia'].apply(lambda x: int(x.split('/')[1]))
+        except:
+            return pd.DataFrame()
         
         # Cria tabela pivô (anos x meses)
-        pivot = df_rubrica.pivot_table(
-            values='Valor_Numerico',
-            index='Mes',
-            columns='Ano',
-            aggfunc='sum',
-            fill_value=0
-        )
+        try:
+            pivot = df_rubrica.pivot_table(
+                values='Valor_Numerico',
+                index='Mes',
+                columns='Ano',
+                aggfunc='sum',
+                fill_value=0
+            )
+        except:
+            return pd.DataFrame()
         
         # Calcula variações
         resultado = pivot.copy()
@@ -236,7 +237,7 @@ class AnalisadorComparativo:
             ano_anterior = anos[i-1]
             if ano_anterior in pivot.columns:
                 resultado[f'Var_{ano_anterior}_{ano_atual}'] = (
-                    (pivot[ano_atual] - pivot[ano_anterior]) / pivot[ano_anterior] * 100
+                    (pivot[ano_atual] - pivot[ano_anterior]) / pivot[ano_anterior].replace(0, np.nan) * 100
                 ).round(2)
         
         # Adiciona totais anuais
@@ -249,7 +250,10 @@ class AnalisadorComparativo:
         """
         Analisa composição dos descontos em um ano específico
         """
-        df_ano = df[(df['Ano'] == ano) & (df['Tipo'] == 'DESCONTO')].copy()
+        if df.empty:
+            return {}
+        
+        df_ano = df[(df['Ano'] == str(ano)) & (df['Tipo'] == 'DESCONTO')].copy()
         
         if df_ano.empty:
             return {}
@@ -265,7 +269,10 @@ class AnalisadorComparativo:
         
         # Calcula percentuais
         total = composicao.sum()
-        percentuais = (composicao / total * 100).round(2)
+        if total > 0:
+            percentuais = (composicao / total * 100).round(2)
+        else:
+            percentuais = composicao * 0
         
         return {
             'composicao': composicao.to_dict(),
@@ -273,34 +280,6 @@ class AnalisadorComparativo:
             'total_ano': total,
             'top_5': composicao.head(5).to_dict()
         }
-    
-    @staticmethod
-    def criar_relatorio_comparativo(df: pd.DataFrame, rubricas_selecionadas: List[str]) -> Dict:
-        """
-        Cria relatório comparativo para múltiplas rubricas
-        """
-        relatorio = {}
-        
-        for rubrica in rubricas_selecionadas:
-            df_rubrica = df[df['Discriminacao'] == rubrica].copy()
-            
-            if not df_rubrica.empty:
-                # Converte valores
-                extrator = ExtratorDemonstrativos()
-                df_rubrica['Valor_Numerico'] = df_rubrica['Valor'].apply(
-                    lambda x: extrator.converter_valor_string(x) or 0
-                )
-                
-                # Agrupa por ano
-                dados_anuais = df_rubrica.groupby('Ano')['Valor_Numerico'].agg(['sum', 'mean', 'count'])
-                
-                relatorio[rubrica] = {
-                    'total_por_ano': dados_anuais['sum'].to_dict(),
-                    'media_mensal': dados_anuais['mean'].to_dict(),
-                    'ocorrencias': dados_anuais['count'].to_dict()
-                }
-        
-        return relatorio
 
 # ============================================
 # MÓDULO 4: TEMPLATES DE RELATÓRIOS
@@ -334,14 +313,6 @@ class TemplateRelatorios:
                 'agrupamento': ['Discriminacao'],
                 'filtros_padrao': {'Tipo': ['DESCONTO']},
                 'graficos': ['pie_descontos', 'treemap']
-            },
-            'auditoria_financeira': {
-                'nome': 'Auditoria Financeira',
-                'descricao': 'Relatório completo para auditoria',
-                'colunas': ['Discriminacao', 'Valor', 'Competencia', 'Ano', 'Tipo', 'Pagina'],
-                'agrupamento': [],
-                'filtros_padrao': {},
-                'graficos': ['todos']
             }
         }
     
@@ -349,7 +320,7 @@ class TemplateRelatorios:
         """
         Aplica um template ao DataFrame
         """
-        if template_id not in self.templates:
+        if df.empty or template_id not in self.templates:
             return df
         
         template = self.templates[template_id]
@@ -367,81 +338,7 @@ class TemplateRelatorios:
         if colunas_disponiveis:
             df_resultado = df_resultado[colunas_disponiveis]
         
-        # Aplica agrupamento se especificado
-        agrupamento = template.get('agrupamento', [])
-        if agrupamento and 'Valor' in df_resultado.columns:
-            # Converte valores para numérico
-            extrator = ExtratorDemonstrativos()
-            df_resultado['Valor_Numerico'] = df_resultado['Valor'].apply(
-                lambda x: extrator.converter_valor_string(x) or 0
-            )
-            
-            df_agrupado = df_resultado.groupby(agrupamento)['Valor_Numerico'].sum().reset_index()
-            df_agrupado['Valor'] = df_agrupado['Valor_Numerico'].apply(
-                lambda x: f"{x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-            )
-            
-            df_resultado = df_agrupado.drop(columns=['Valor_Numerico'])
-        
         return df_resultado
-    
-    def gerar_relatorio_template(self, df: pd.DataFrame, template_id: str) -> Dict:
-        """
-        Gera relatório completo baseado em template
-        """
-        resultado = {
-            'template': self.templates.get(template_id, {}),
-            'dados': None,
-            'estatisticas': {},
-            'recomendacoes': []
-        }
-        
-        # Aplica template
-        df_template = self.aplicar_template(df, template_id)
-        resultado['dados'] = df_template
-        
-        # Calcula estatísticas
-        if not df_template.empty and 'Valor' in df_template.columns:
-            extrator = ExtratorDemonstrativos()
-            df_template['Valor_Numerico'] = df_template['Valor'].apply(
-                lambda x: extrator.converter_valor_string(x) or 0
-            )
-            
-            resultado['estatisticas'] = {
-                'total_registros': len(df_template),
-                'valor_total': df_template['Valor_Numerico'].sum(),
-                'valor_medio': df_template['Valor_Numerico'].mean(),
-                'valor_maximo': df_template['Valor_Numerico'].max(),
-                'valor_minimo': df_template['Valor_Numerico'].min(),
-                'rubricas_unicas': df_template['Discriminacao'].nunique() if 'Discriminacao' in df_template.columns else 0
-            }
-            
-            # Gera recomendações baseadas nos dados
-            resultado['recomendacoes'] = self.gerar_recomendacoes(df_template)
-        
-        return resultado
-    
-    def gerar_recomendacoes(self, df: pd.DataFrame) -> List[str]:
-        """
-        Gera recomendações automáticas baseadas nos dados
-        """
-        recomendacoes = []
-        
-        if df.empty:
-            return recomendacoes
-        
-        # Exemplo de recomendações simples
-        if 'Tipo' in df.columns:
-            tipos = df['Tipo'].unique()
-            if len(tipos) == 1:
-                recomendacoes.append(f"Foco em {tipos[0]} - considere analisar o outro tipo para visão completa")
-        
-        if 'Ano' in df.columns:
-            anos = df['Ano'].unique()
-            if len(anos) > 1:
-                recomendacoes.append(f"Dados de {len(anos)} anos disponíveis para análise comparativa")
-        
-        return recomendacoes
 
 # ============================================
 # MÓDULO PRINCIPAL (CÓDIGO ORIGINAL MODIFICADO)
@@ -597,7 +494,8 @@ class ExtratorDemonstrativos:
         if dados:
             df = pd.DataFrame(dados)
             df = df.drop_duplicates()
-            df = df.sort_values(['Ano', 'Pagina', 'Tipo', 'Discriminacao'])
+            if not df.empty:
+                df = df.sort_values(['Ano', 'Pagina', 'Tipo', 'Discriminacao'])
             return df
         else:
             return pd.DataFrame(columns=['Discriminacao', 'Valor', 'Competencia', 'Pagina', 'Ano', 'Tipo'])
@@ -652,31 +550,73 @@ class ExtratorDemonstrativos:
         return dados_secao
 
 # ============================================
-# INTERFACE STREAMLOT - VERSÃO SUPER POTENTE
+# INTERFACE STREAMLIT - VERSÃO CORRIGIDA
 # ============================================
 
 def inicializar_sessao():
     """Inicializa as variáveis de sessão"""
-    sessao_vars = [
-        'dados_extraidos', 'df_filtrado', 'arquivo_processado',
-        'configurador', 'corretor', 'analisador', 'template_manager',
-        'modo_avancado', 'indice_correcao', 'data_correcao',
-        'template_selecionado', 'rubricas_analise_comparativa'
-    ]
-    
-    for var in sessao_vars:
-        if var not in st.session_state:
-            st.session_state[var] = None
-    
-    # Inicializa módulos
-    if st.session_state.configurador is None:
+    if 'dados_extraidos' not in st.session_state:
+        st.session_state.dados_extraidos = None
+    if 'df_filtrado' not in st.session_state:
+        st.session_state.df_filtrado = None
+    if 'arquivo_processado' not in st.session_state:
+        st.session_state.arquivo_processado = None
+    if 'configurador' not in st.session_state:
         st.session_state.configurador = ConfiguradorUsuario()
-    if st.session_state.corretor is None:
+    if 'corretor' not in st.session_state:
         st.session_state.corretor = CorrecaoMonetaria()
-    if st.session_state.analisador is None:
+    if 'analisador' not in st.session_state:
         st.session_state.analisador = AnalisadorComparativo()
-    if st.session_state.template_manager is None:
+    if 'template_manager' not in st.session_state:
         st.session_state.template_manager = TemplateRelatorios()
+    if 'modo_avancado' not in st.session_state:
+        st.session_state.modo_avancado = False
+    if 'indice_correcao' not in st.session_state:
+        st.session_state.indice_correcao = 'IPCA'
+    if 'data_correcao' not in st.session_state:
+        hoje = datetime.now()
+        st.session_state.data_correcao = f"{hoje.month:02d}/{hoje.year}"
+    if 'template_selecionado' not in st.session_state:
+        st.session_state.template_selecionado = 'analise_simplificada'
+
+def formatar_valor_total(df):
+    """Formata o valor total para exibição"""
+    if df.empty:
+        return "R$ 0,00"
+    
+    extrator = ExtratorDemonstrativos()
+    valores = df['Valor'].apply(lambda x: extrator.converter_valor_string(x) or 0)
+    total = valores.sum()
+    return f"R$ {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+def formatar_valor_brasileiro(valor):
+    """Formata valor para padrão brasileiro"""
+    return f"{valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+def exportar_dados(df, formato, nome_arquivo):
+    """Exporta dados no formato selecionado"""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    if formato == "Excel (XLSX)":
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Dados')
+        buffer.seek(0)
+        st.download_button(
+            label="⬇️ Baixar Excel",
+            data=buffer,
+            file_name=f"demonstrativos_{timestamp}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    
+    elif formato == "CSV":
+        csv = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
+        st.download_button(
+            label="⬇️ Baixar CSV",
+            data=csv,
+            file_name=f"demonstrativos_{timestamp}.csv",
+            mime="text/csv"
+        )
 
 def main():
     st.set_page_config(
@@ -696,7 +636,7 @@ def main():
         # Modo de operação
         st.session_state.modo_avancado = st.checkbox(
             "Modo Avançado",
-            value=st.session_state.modo_avancado or False,
+            value=st.session_state.modo_avancado,
             help="Ativa funcionalidades avançadas"
         )
         
@@ -810,7 +750,11 @@ def main():
         
         # Interface com dados processados
         if st.session_state.dados_extraidos is not None:
-            df = st.session_state.df_filtrado or st.session_state.dados_extraidos
+            # CORREÇÃO AQUI: Usar verificação explícita em vez de 'or'
+            if st.session_state.df_filtrado is not None:
+                df = st.session_state.df_filtrado
+            else:
+                df = st.session_state.dados_extraidos
             
             # Criar abas principais
             tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -833,7 +777,7 @@ def main():
                 with col3:
                     st.metric("Rubricas", df['Discriminacao'].nunique())
                 with col4:
-                    st.metric("Valor Total", self.formatar_valor_total(df))
+                    st.metric("Valor Total", formatar_valor_total(df))
                 
                 # Dados principais
                 st.subheader("📋 Dados Extraídos")
@@ -883,11 +827,11 @@ def main():
                 with col_fav2:
                     st.write("⠀")  # Espaçamento
                     if rubrica_selecionada in favoritas:
-                        if st.button("❌ Remover"):
+                        if st.button("❌ Remover", key="remover_fav"):
                             st.session_state.configurador.remover_rubrica_favorita(rubrica_selecionada)
                             st.rerun()
                     else:
-                        if st.button("⭐ Favoritar"):
+                        if st.button("⭐ Favoritar", key="adicionar_fav"):
                             st.session_state.configurador.adicionar_rubrica_favorita(rubrica_selecionada)
                             st.rerun()
                 
@@ -902,7 +846,7 @@ def main():
                 # Botões de ação
                 col_btn1, col_btn2 = st.columns(2)
                 with col_btn1:
-                    if st.button("✅ Aplicar Filtros", type="primary", use_container_width=True):
+                    if st.button("✅ Aplicar Filtros", type="primary", use_container_width=True, key="aplicar_filtros"):
                         df_filtrado = st.session_state.dados_extraidos.copy()
                         
                         if tipos:
@@ -917,7 +861,7 @@ def main():
                         st.rerun()
                 
                 with col_btn2:
-                    if st.button("🗑️ Limpar Filtros", use_container_width=True):
+                    if st.button("🗑️ Limpar Filtros", use_container_width=True, key="limpar_filtros"):
                         st.session_state.df_filtrado = st.session_state.dados_extraidos.copy()
                         st.success("✅ Filtros removidos!")
                         st.rerun()
@@ -931,7 +875,8 @@ def main():
                     
                     rubrica_comparar = st.selectbox(
                         "Selecione uma rubrica para análise de evolução:",
-                        sorted(df['Discriminacao'].unique())
+                        sorted(df['Discriminacao'].unique()),
+                        key="rubrica_comparar"
                     )
                     
                     if rubrica_comparar:
@@ -941,39 +886,45 @@ def main():
                             st.write(f"**Evolução de {rubrica_comparar}:**")
                             st.dataframe(analise, use_container_width=True)
                             
-                            # Gráfico de evolução
-                            fig = px.line(
-                                analise.drop('Total_Anual', errors='ignore'),
-                                title=f"Evolução Mensal - {rubrica_comparar}",
-                                labels={'value': 'Valor', 'variable': 'Ano'}
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
+                            # Gráfico de evolução (se houver dados suficientes)
+                            if len(analise.columns) > 1:
+                                try:
+                                    fig = px.line(
+                                        analise.drop('Total_Anual', errors='ignore'),
+                                        title=f"Evolução Mensal - {rubrica_comparar}",
+                                        labels={'value': 'Valor', 'variable': 'Ano'}
+                                    )
+                                    st.plotly_chart(fig, use_container_width=True)
+                                except:
+                                    pass
                     
                     # Composição de descontos
                     st.write("### 🧩 Composição de Descontos")
                     
                     ano_analise = st.selectbox(
                         "Selecione o ano para análise:",
-                        sorted(df['Ano'].unique())
+                        sorted(df['Ano'].unique()),
+                        key="ano_analise"
                     )
                     
                     if st.button("Analisar Composição", key="analise_comp"):
                         composicao = st.session_state.analisador.analisar_composicao_descontos(df, ano_analise)
                         
-                        if composicao:
-                            # Gráfico de pizza
+                        if composicao and composicao['total_ano'] > 0:
+                            # Gráfico de pizza para top 10
                             df_composicao = pd.DataFrame({
                                 'Rubrica': list(composicao['percentuais'].keys()),
                                 'Percentual': list(composicao['percentuais'].values())
-                            })
+                            }).head(10)
                             
-                            fig = px.pie(
-                                df_composicao.head(10),
-                                values='Percentual',
-                                names='Rubrica',
-                                title=f"Composição dos Descontos - {ano_analise}"
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
+                            if not df_composicao.empty:
+                                fig = px.pie(
+                                    df_composicao,
+                                    values='Percentual',
+                                    names='Rubrica',
+                                    title=f"Composição dos Descontos - {ano_analise}"
+                                )
+                                st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.info("🔓 Ative o Modo Avançado na barra lateral para acessar estas análises.")
             
@@ -990,9 +941,10 @@ def main():
                         st.write(f"### 📄 {template['nome']}")
                         st.write(template['descricao'])
                         
-                        if st.button("🔄 Gerar Relatório", type="primary"):
+                        if st.button("🔄 Gerar Relatório", type="primary", key="gerar_relatorio"):
                             with st.spinner("Gerando relatório..."):
-                                relatorio = st.session_state.template_manager.gerar_relatorio_template(
+                                # Aplica template
+                                df_template = st.session_state.template_manager.aplicar_template(
                                     df, 
                                     st.session_state.template_selecionado
                                 )
@@ -1000,27 +952,28 @@ def main():
                                 # Mostrar dados
                                 st.write("#### 📊 Dados do Relatório")
                                 st.dataframe(
-                                    relatorio['dados'],
+                                    df_template,
                                     use_container_width=True,
                                     height=300
                                 )
                                 
-                                # Estatísticas
-                                st.write("#### 📈 Estatísticas")
-                                stats = relatorio['estatisticas']
-                                col_s1, col_s2, col_s3 = st.columns(3)
-                                with col_s1:
-                                    st.metric("Total Registros", stats.get('total_registros', 0))
-                                with col_s2:
-                                    st.metric("Valor Total", self.formatar_valor_brasileiro(stats.get('valor_total', 0)))
-                                with col_s3:
-                                    st.metric("Rubricas Únicas", stats.get('rubricas_unicas', 0))
-                                
-                                # Recomendações
-                                if relatorio['recomendacoes']:
-                                    st.write("#### 💡 Recomendações")
-                                    for rec in relatorio['recomendacoes']:
-                                        st.info(f"• {rec}")
+                                # Estatísticas básicas
+                                if not df_template.empty and 'Valor' in df_template.columns:
+                                    extrator = ExtratorDemonstrativos()
+                                    df_template['Valor_Numerico'] = df_template['Valor'].apply(
+                                        lambda x: extrator.converter_valor_string(x) or 0
+                                    )
+                                    
+                                    st.write("#### 📈 Estatísticas")
+                                    col_s1, col_s2, col_s3 = st.columns(3)
+                                    with col_s1:
+                                        st.metric("Total Registros", len(df_template))
+                                    with col_s2:
+                                        total_valor = df_template['Valor_Numerico'].sum()
+                                        st.metric("Valor Total", formatar_valor_brasileiro(total_valor))
+                                    with col_s3:
+                                        if 'Discriminacao' in df_template.columns:
+                                            st.metric("Rubricas Únicas", df_template['Discriminacao'].nunique())
                 else:
                     st.info("🔓 Ative o Modo Avançado para acessar templates de relatórios.")
             
@@ -1030,28 +983,51 @@ def main():
                 # Opções de exportação
                 formato = st.radio(
                     "Formato:",
-                    ["Excel (XLSX)", "CSV", "JSON"],
-                    horizontal=True
+                    ["Excel (XLSX)", "CSV"],
+                    horizontal=True,
+                    key="formato_export"
                 )
-                
-                # Dados extras para exportação
-                incluir_analises = st.checkbox("Incluir análises comparativas", value=True)
-                incluir_correcao = st.checkbox("Incluir valores corrigidos", 
-                                             value=st.session_state.indice_correcao != 'Nenhum')
                 
                 # Botões de exportação
                 col_e1, col_e2, col_e3 = st.columns(3)
                 
                 with col_e1:
-                    if st.button("💾 Exportar Dados", use_container_width=True):
-                        self.exportar_dados(df, formato, uploaded_file.name)
+                    if st.button("💾 Exportar Dados", use_container_width=True, key="exportar_dados"):
+                        exportar_dados(df, formato, uploaded_file.name)
                 
                 with col_e2:
-                    if st.button("📊 Exportar + Análises", use_container_width=True):
-                        self.exportar_com_analises(df, formato, uploaded_file.name)
+                    if st.button("📊 Exportar + Análises", use_container_width=True, key="exportar_analises"):
+                        # Exporta com análises básicas
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        buffer = io.BytesIO()
+                        
+                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                            # Dados principais
+                            df.to_excel(writer, index=False, sheet_name='Dados')
+                            
+                            # Análise de composição (se houver descontos)
+                            if 'DESCONTO' in df['Tipo'].unique():
+                                anos_unicos = sorted(df['Ano'].unique())
+                                for ano in anos_unicos:
+                                    composicao = st.session_state.analisador.analisar_composicao_descontos(df, ano)
+                                    if composicao and composicao['total_ano'] > 0:
+                                        df_comp = pd.DataFrame({
+                                            'Rubrica': list(composicao['composicao'].keys()),
+                                            'Valor': list(composicao['composicao'].values()),
+                                            'Percentual': list(composicao['percentuais'].values())
+                                        })
+                                        df_comp.to_excel(writer, index=False, sheet_name=f"Comp_{ano}")
+                        
+                        buffer.seek(0)
+                        st.download_button(
+                            label="⬇️ Baixar Excel com Análises",
+                            data=buffer,
+                            file_name=f"demonstrativos_analises_{timestamp}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
                 
                 with col_e3:
-                    if st.button("🔄 Novo Arquivo", type="secondary", use_container_width=True):
+                    if st.button("🔄 Novo Arquivo", type="secondary", use_container_width=True, key="novo_arquivo"):
                         st.session_state.dados_extraidos = None
                         st.session_state.df_filtrado = None
                         st.session_state.arquivo_processado = None
@@ -1069,7 +1045,6 @@ def main():
             2. **💰 Correção Monetária** - Corrija valores com IPCA, INPC, IGPM, SELIC
             3. **📊 Análise Comparativa** - Compare evolução ano a ano
             4. **📋 Templates de Relatórios** - Relatórios pré-formatados
-            5. **📈 Dashboard Interativo** - Visualizações avançadas
             
             ### 🔧 **Como usar:**
             1. Ative o **Modo Avançado** na barra lateral
@@ -1078,93 +1053,6 @@ def main():
             4. Filtre por rubricas favoritas
             5. Exporte com análises incluídas
             """)
-
-    # Helper methods
-    def formatar_valor_total(self, df):
-        """Formata o valor total para exibição"""
-        extrator = ExtratorDemonstrativos()
-        valores = df['Valor'].apply(lambda x: extrator.converter_valor_string(x) or 0)
-        total = valores.sum()
-        return f"R$ {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-    def formatar_valor_brasileiro(self, valor):
-        """Formata valor para padrão brasileiro"""
-        return f"{valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-    def exportar_dados(self, df, formato, nome_arquivo):
-        """Exporta dados no formato selecionado"""
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        
-        if formato == "Excel (XLSX)":
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='Dados')
-            buffer.seek(0)
-            st.download_button(
-                label="⬇️ Baixar Excel",
-                data=buffer,
-                file_name=f"demonstrativos_{timestamp}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        
-        elif formato == "CSV":
-            csv = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
-            st.download_button(
-                label="⬇️ Baixar CSV",
-                data=csv,
-                file_name=f"demonstrativos_{timestamp}.csv",
-                mime="text/csv"
-            )
-        
-        elif formato == "JSON":
-            json_data = df.to_json(orient='records', force_ascii=False)
-            st.download_button(
-                label="⬇️ Baixar JSON",
-                data=json_data,
-                file_name=f"demonstrativos_{timestamp}.json",
-                mime="application/json"
-            )
-
-    def exportar_com_analises(self, df, formato, nome_arquivo):
-        """Exporta dados com análises incluídas"""
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        
-        if formato == "Excel (XLSX)":
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                # Dados principais
-                df.to_excel(writer, index=False, sheet_name='Dados')
-                
-                # Análises comparativas (se houver dados)
-                if 'Discriminacao' in df.columns:
-                    # Top 10 rubricas para análise
-                    top_rubricas = df['Discriminacao'].value_counts().head(10).index.tolist()
-                    
-                    for rubrica in top_rubricas[:3]:  # Limita a 3 análises
-                        analise = st.session_state.analisador.comparar_evolucao_anual(df, rubrica)
-                        if not analise.empty:
-                            analise.to_excel(writer, sheet_name=f"Análise_{rubrica[:20]}")
-                
-                # Composição por ano
-                anos = sorted(df['Ano'].unique())
-                composicoes = []
-                for ano in anos:
-                    comp = st.session_state.analisador.analisar_composicao_descontos(df, ano)
-                    if comp:
-                        df_comp = pd.DataFrame({
-                            'Rubrica': list(comp['composicao'].keys()),
-                            'Valor': list(comp['composicao'].values()),
-                            'Percentual': list(comp['percentuais'].values())
-                        })
-                        df_comp.to_excel(writer, index=False, sheet_name=f"Comp_{ano}")
-            
-            buffer.seek(0)
-            st.download_button(
-                label="⬇️ Baixar Excel com Análises",
-                data=buffer,
-                file_name=f"demonstrativos_analises_{timestamp}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
 
 if __name__ == "__main__":
     main()
