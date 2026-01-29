@@ -75,8 +75,14 @@ def extrair_dados(pdf_bytes):
 
                     codigo = colunas[0]
                     # Normaliza encoding da rubrica (corrige OLÃ© -> OLÉ)
+                    # Normaliza encoding da rubrica sem perder acentos
                     rubrica = colunas[1]
-                    rubrica = rubrica.encode('latin1', errors='ignore').decode('utf-8', errors='ignore')
+                    try:
+                        # caso típico: texto veio em UTF-8 interpretado como Latin-1
+                        rubrica = rubrica.encode('latin1').decode('utf-8')
+                    except UnicodeEncodeError:
+                        # fallback: mantém texto original
+                        rubrica = rubrica
                     tipo_rd = colunas[2]
 
                     valores_mes = colunas[primeira_col_mes:primeira_col_mes + len(meses)]
