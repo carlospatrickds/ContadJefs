@@ -1,7 +1,5 @@
 # app.py
-# Extrator de Rubricas – Ficha Financeira SIAPE (controle exato de competências)
-# Requisitos: streamlit, pdfplumber, pandas
-
+# Extrator de Rubricas – Ficha Financeira SIAPE
 import streamlit as st
 import pdfplumber
 import pandas as pd
@@ -15,7 +13,6 @@ MESES = {
 }
 
 VALOR_RE = re.compile(r"\d{1,3}(?:\.\d{3})*,\d{2}")
-
 INICIO_FICHA_RE = re.compile(r"Siape - Sistema Integrado de Administracao de Recursos Humanos", re.IGNORECASE)
 FIM_FICHA_RE = re.compile(r"TOTAL\s+L[IÍ]QUIDO", re.IGNORECASE)
 ANO_RE = re.compile(r"Ficha Financeira referente a:\s*(\d{4})", re.IGNORECASE)
@@ -58,12 +55,17 @@ def extrair_dados(pdf_bytes):
                     if linha.strip().startswith("Rubrica|"):
                         cabecalho_idx = idx
                         break
+                
                 if cabecalho_idx is None:
                     continue
 
                 cabecalho_cols = [c.strip() for c in linhas_bloco[cabecalho_idx].split("|")]
-                meses = [c for c in cabecalho_cols if c in MESES]
-                primeira_col_mes = cabecalho_cols.index(meses[0])
+                meses_encontrados = [c for c in cabecalho_cols if c in MESES]
+                
+                if not meses_encontrados:
+                    continue
+                    
+                primeira_col_mes = cabecalho_cols.index(meses_encontrados[0])
 
                 for linha in linhas_bloco[cabecalho_idx + 1:]:
                     if FIM_FICHA_RE.search(linha):
@@ -74,23 +76,19 @@ def extrair_dados(pdf_bytes):
                         continue
 
                     codigo = colunas[0]
-                    # Normaliza encoding da rubrica de forma segura (sem quebrar o app)
                     rubrica = colunas[1]
+                    
+                    # Tratamento de encoding simplificado e seguro
                     if "Ã" in rubrica:
                         try:
                             rubrica = rubrica.encode("latin1").decode("utf-8")
-                        except (UnicodeEncodeError, UnicodeDecodeError):
+                        except:
                             pass
-                        except (UnicodeEncodeError, UnicodeDecodeError):
-                            rubrica = rubrica.encode('latin1').decode('utf-8')
-                    except UnicodeEncodeError:
-                        # fallback: mantém texto original
-                        rubrica = rubrica
+                    
                     tipo_rd = colunas[2]
+                    valores_mes = colunas[primeira_col_mes:primeira_col_mes + len(meses_encontrados)]
 
-                    valores_mes = colunas[primeira_col_mes:primeira_col_mes + len(meses)]
-
-                    for mes, celula in zip(meses, valores_mes):
+                    for mes, celula in zip(meses_encontrados, valores_mes):
                         m = VALOR_RE.search(celula)
                         if not m:
                             continue
@@ -100,12 +98,11 @@ def extrair_dados(pdf_bytes):
                         registros.append({
                             "Codigo": codigo,
                             "Rubrica": rubrica,
-                            "Tipo": "Receita" if tipo_rd.strip() == "R" else "Despesa",
+                            "Tipo": "Receita" if "R" in tipo_rd.upper() else "Despesa",
                             "Competencia": competencia,
                             "Valor": f"R$ {m.group(0)}",
                             "Pagina": page_num
                         })
-
                 i += 1
 
     return pd.DataFrame(registros)
@@ -128,10 +125,11 @@ if pdf_file:
                 default=["Receita", "Despesa"]
             )
         with col2:
+            rubricas_disponiveis = sorted(df["Rubrica"].unique())
             rubricas_sel = st.multiselect(
                 "Selecione as rubricas",
-                sorted(df["Rubrica"].unique()),
-                default=sorted(df["Rubrica"].unique())
+                rubricas_disponiveis,
+                default=rubricas_disponiveis
             )
 
         df_filtro = df[df["Tipo"].isin(tipos)]
@@ -143,8 +141,8 @@ if pdf_file:
         csv = df_filtro.to_csv(index=False, sep=";", encoding="utf-8-sig")
 
         st.download_button(
-            "📥 Baixar CSV apenas com as rubricas selecionadas",
+            "📥 Baixar CSV filtrado",
             data=csv,
-            file_name="rubricas_ficha_financeira_filtradas.csv",
+            file_name="rubricas_siape_filtradas.csv",
             mime="text/csv"
         )
