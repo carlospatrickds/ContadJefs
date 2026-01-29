@@ -27,7 +27,6 @@ pdf_file = st.file_uploader("Envie o PDF da Ficha Financeira", type="pdf")
 
 # ---------------- FUNÇÕES ----------------
 def corrigir_texto(txt: str) -> str:
-    """Corrige mojibake: OLÃ© -> OLÉ"""
     if not txt:
         return ""
     if "Ã" in txt or "�" in txt:
@@ -42,39 +41,37 @@ def corrigir_texto(txt: str) -> str:
 def extrair_dados(pdf_bytes: bytes) -> pd.DataFrame:
     registros = []
 
-    # Lê o PDF como fluxo contínuo (resolve quebra de página)
-    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
-        texto_completo = "\n".join(
-            page.extract_text() or "" for page in pdf.pages
-        )
+    linhas = []  # cada item: (texto_linha, pagina_real)
 
-    linhas = texto_completo.split("\n")
+    # 1️⃣ Lê página por página e preserva número REAL
+    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+        for page_num, page in enumerate(pdf.pages, start=1):
+            texto = page.extract_text() or ""
+            for linha in texto.split("\n"):
+                linhas.append((linha, page_num))
+
     i = 0
     ano_atual = None
     meses_correntes = []
     idx_primeiro_mes = None
-    pagina_virtual = 1  # controle lógico de página
 
+    # 2️⃣ Processamento contínuo, MAS com página real
     while i < len(linhas):
-        linha = linhas[i]
+        linha, pagina_real = linhas[i]
 
-        # Início de ficha
         if INICIO_FICHA_RE.search(linha):
             ano_atual = None
             meses_correntes = []
             idx_primeiro_mes = None
-            pagina_virtual += 1
             i += 1
             continue
 
-        # Ano da ficha
         ano_match = ANO_RE.search(linha)
         if ano_match:
             ano_atual = ano_match.group(1)
             i += 1
             continue
 
-        # Cabeçalho de meses
         if "|" in linha and any(m in linha for m in MESES):
             colunas = [c.strip() for c in linha.split("|")]
             meses_correntes = [c for c in colunas if c in MESES]
@@ -83,21 +80,18 @@ def extrair_dados(pdf_bytes: bytes) -> pd.DataFrame:
             i += 1
             continue
 
-        # Fim da ficha
         if FIM_FICHA_RE.search(linha):
             meses_correntes = []
             idx_primeiro_mes = None
             i += 1
             continue
 
-        # Linhas de rubrica
         if meses_correntes and idx_primeiro_mes is not None and "|" in linha:
             colunas = [c.strip() for c in linha.split("|")]
             if len(colunas) <= idx_primeiro_mes or not ano_atual:
                 i += 1
                 continue
 
-            codigo = colunas[0]
             rubrica = corrigir_texto(colunas[1])
             tipo_rd = colunas[2].upper()
             valores = colunas[idx_primeiro_mes: idx_primeiro_mes + len(meses_correntes)]
@@ -106,13 +100,13 @@ def extrair_dados(pdf_bytes: bytes) -> pd.DataFrame:
                 match = VALOR_RE.search(celula)
                 if match:
                     registros.append({
-                        "Codigo": codigo,
-                        "Rubrica": rubrica,
-                        "Tipo": "DESCONTO" if "D" in tipo_rd else "RECEITA",
-                        "Competencia": f"{MESES[mes_nome]}/{ano_atual}",
+                        "Discriminacao": rubrica,
                         "Valor": match.group(0),
-                        "Pagina": pagina_virtual,
-                        "Ano": ano_atual
+                        "Competencia": f"{MESES[mes_nome]}/{ano_atual}",
+                        "Pagina": pagina_real,
+                        "Ano": ano_atual,
+                        "Tipo": "DESCONTO" if "D" in tipo_rd else "RECEITA",
+                        "rubrica": ""
                     })
 
         i += 1
@@ -129,18 +123,16 @@ if pdf_file:
         st.warning("Nenhum dado encontrado.")
         st.stop()
 
-    st.success(f"✅ {len(df)} registros extraídos com sucesso")
+    st.success(f"✅ {len(df)} registros extraídos")
 
     # -------- FILTROS --------
-    st.subheader("🔎 Filtros")
-
     col1, col2 = st.columns(2)
 
     with col1:
         rubricas_sel = st.multiselect(
             "Rubricas",
-            sorted(df["Rubrica"].unique()),
-            default=df["Rubrica"].unique()
+            sorted(df["Discriminacao"].unique()),
+            default=df["Discriminacao"].unique()
         )
 
     with col2:
@@ -151,21 +143,14 @@ if pdf_file:
         )
 
     df_f = df[
-        df["Rubrica"].isin(rubricas_sel) &
+        df["Discriminacao"].isin(rubricas_sel) &
         df["Tipo"].isin(tipos_sel)
     ]
 
     st.dataframe(df_f, use_container_width=True, hide_index=True)
 
-    # -------- EXPORTAÇÃO FINAL (PADRÃO SOLICITADO) --------
-    st.subheader("📤 Exportar CSV")
-
-    df_export = df_f.copy()
-
-    df_export["Discriminacao"] = df_export["Rubrica"]
-    df_export["rubrica"] = ""
-
-    df_export = df_export[
+    # -------- EXPORTAÇÃO FINAL --------
+    csv = df_f[
         [
             "Discriminacao",
             "Valor",
@@ -175,17 +160,11 @@ if pdf_file:
             "Tipo",
             "rubrica"
         ]
-    ]
-
-    csv = df_export.to_csv(
-        index=False,
-        sep=";",
-        encoding="utf-8-sig"
-    )
+    ].to_csv(index=False, sep=";", encoding="utf-8-sig")
 
     st.download_button(
         "📥 Baixar CSV",
         data=csv,
-        file_name="extracao_siape_padrao_final.csv",
+        file_name="extracao_siape_paginas_reais.csv",
         mime="text/csv"
     )
