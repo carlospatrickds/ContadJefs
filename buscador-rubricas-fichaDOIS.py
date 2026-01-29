@@ -145,5 +145,3 @@ if pdf_file:
             mime="text/csv"
         )
 
-
-Deseja que eu adicione uma coluna de "Valor Numérico" (sem o R$) para facilitar cálculos de soma no Excel?
