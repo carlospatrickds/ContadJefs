@@ -74,8 +74,6 @@ def extrair_dados(pdf_bytes):
                         continue
 
                     codigo = colunas[0]
-                    # Normaliza encoding da rubrica (corrige OLÃ© -> OLÉ)
-                    # Normaliza encoding da rubrica sem perder acentos
                     # Normaliza encoding da rubrica de forma segura (sem quebrar o app)
                     rubrica = colunas[1]
                     if "Ã" in rubrica:
