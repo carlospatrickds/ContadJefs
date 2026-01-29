@@ -1,5 +1,5 @@
 # app.py
-# Streamlit app para extrair rubricas de Ficha Financeira SIAPE (PDF)
+# Extrator de Rubricas – Ficha Financeira (SIAPE)
 # Requisitos: streamlit, pdfplumber, pandas
 
 import streamlit as st
@@ -46,29 +46,41 @@ def extrair_dados(pdf_bytes):
             if cabecalho_idx is None:
                 continue
 
-            meses_linha = linhas[cabecalho_idx]
-            meses = [m for m in MESES.keys() if m in meses_linha]
+            # Meses exatamente na ordem visual do cabeçalho
+            meses = []
+            for token in linhas[cabecalho_idx].split("|"):
+                t = token.strip()
+                if t in MESES:
+                    meses.append(t)
 
             for linha in linhas[cabecalho_idx + 1:]:
                 if linha.strip().startswith("*****"):
                     break
 
-                partes = [p.strip() for p in linha.split("|")]
-                if len(partes) < 5:
+                colunas = [c.strip() for c in linha.split("|")]
+                if len(colunas) < 5:
                     continue
 
-                cod = partes[0]
-                nome = partes[1]
-                rd = partes[2] or ""
+                codigo = colunas[0]
+                rubrica = colunas[1]
+                tipo_rd = colunas[2]
 
-                valores = VALOR_RE.findall(linha)
+                # valores por coluna (posição importa!)
+                valores_por_coluna = []
+                for c in colunas:
+                    m = VALOR_RE.search(c)
+                    valores_por_coluna.append(m.group(0) if m else None)
 
-                for mes, valor in zip(meses, valores):
+                for mes, valor in zip(meses, valores_por_coluna):
+                    if not valor:
+                        continue
+
                     competencia = f"{MESES[mes]}/{ano}"
+
                     registros.append({
-                        "Codigo": cod,
-                        "Rubrica": nome,
-                        "Tipo": "Receita" if rd.strip() == "R" else "Despesa",
+                        "Codigo": codigo,
+                        "Rubrica": rubrica,
+                        "Tipo": "Receita" if tipo_rd.strip() == "R" else "Despesa",
                         "Competencia": competencia,
                         "Valor": f"R$ {valor}",
                         "Pagina": page_num
@@ -85,22 +97,32 @@ if pdf_file:
     else:
         st.success(f"{len(df)} registros extraídos.")
 
+        st.subheader("🔎 Filtros")
         col1, col2 = st.columns(2)
         with col1:
-            tipo = st.multiselect("Filtrar por tipo", ["Receita", "Despesa"], default=["Receita", "Despesa"])
+            tipos = st.multiselect(
+                "Tipo de rubrica",
+                ["Receita", "Despesa"],
+                default=["Receita", "Despesa"]
+            )
         with col2:
-            rubricas = st.multiselect("Filtrar por rubrica", sorted(df["Rubrica"].unique()))
+            rubricas_sel = st.multiselect(
+                "Selecione as rubricas",
+                sorted(df["Rubrica"].unique()),
+                default=sorted(df["Rubrica"].unique())
+            )
 
-        df_filtro = df[df["Tipo"].isin(tipo)]
-        if rubricas:
-            df_filtro = df_filtro[df_filtro["Rubrica"].isin(rubricas)]
+        df_filtro = df[df["Tipo"].isin(tipos)]
+        df_filtro = df_filtro[df_filtro["Rubrica"].isin(rubricas_sel)]
 
         st.dataframe(df_filtro, use_container_width=True)
 
+        st.subheader("📤 Exportação")
         csv = df_filtro.to_csv(index=False, sep=";", encoding="utf-8-sig")
+
         st.download_button(
-            "📥 Baixar CSV",
+            "📥 Baixar CSV apenas com as rubricas selecionadas",
             data=csv,
-            file_name="rubricas_ficha_financeira.csv",
+            file_name="rubricas_ficha_financeira_filtradas.csv",
             mime="text/csv"
         )
