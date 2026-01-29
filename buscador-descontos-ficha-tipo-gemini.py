@@ -2,175 +2,250 @@ import streamlit as st
 import pdfplumber
 import pandas as pd
 import re
-import io
 
-# --- Configuração da Página ---
-st.set_page_config(page_title="Extrator Financeiro SIAPE", layout="wide")
+# --- Configurações Iniciais ---
+def setup_page():
+    st.set_page_config(
+        page_title="Extrator Financeiro SIAPE",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    st.title("📊 Extrator SIAPE - Análise por Competência")
+    st.markdown("""
+        **Instruções:**
+        1. Faça upload do PDF contendo as Fichas Financeiras.
+        2. O sistema detectará automaticamente o **Ano de Referência** e transformará a tabela.
+        3. Use os filtros laterais para selecionar Rubricas, Tipos e Competências específicas.
+    """)
 
-st.title("📂 Extrator de Fichas Financeiras (SIAPE)")
-st.markdown("""
-    Faça upload do seu PDF (mesmo com várias páginas/anos). 
-    O sistema identificará o **Ano de Referência** correto e permitirá filtrar Proventos/Descontos.
-""")
+# --- Constantes e Mapas ---
+MAPA_MESES = {
+    'JAN': '01', 'JANEIRO': '01',
+    'FEV': '02', 'FEVEREIRO': '02',
+    'MAR': '03', 'MARÇO': '03',
+    'ABR': '04', 'ABRIL': '04',
+    'MAI': '05', 'MAIO': '05',
+    'JUN': '06', 'JUNHO': '06',
+    'JUL': '07', 'JULHO': '07',
+    'AGO': '08', 'AGOSTO': '08',
+    'SET': '09', 'SETEMBRO': '09',
+    'OUT': '10', 'OUTUBRO': '10',
+    'NOV': '11', 'NOVEMBRO': '11',
+    'DEZ': '12', 'DEZEMBRO': '12'
+}
 
-# --- Função Auxiliar: Remover Duplicatas nas Colunas ---
-def make_columns_unique(columns):
-    """Garante que não existam colunas com nomes iguais (ex: 'Valor', 'Valor')"""
-    seen = {}
-    new_columns = []
-    for col in columns:
-        if col in seen:
-            seen[col] += 1
-            new_columns.append(f"{col}_{seen[col]}")
-        else:
-            seen[col] = 0
-            new_columns.append(col)
-    return new_columns
+# --- Funções Auxiliares ---
+def limpar_valor_monetario(valor):
+    """Converte strings financeiras (ex: '1.200,50') para float (1200.50)."""
+    if pd.isna(valor) or str(valor).strip() == '':
+        return 0.0
+    # Remove pontos de milhar e troca vírgula decimal por ponto
+    v = str(valor).replace('.', '').replace(',', '.')
+    try:
+        return float(v)
+    except ValueError:
+        return 0.0
 
-# --- Função de Extração ---
-def extract_data_from_pdf(file):
-    all_data = []
+def extrair_ano_robusto(page_text):
+    """
+    Busca o ano de referência ignorando quebras de linha.
+    Procura por 'ANO REFERENCIA' seguido de 4 dígitos.
+    """
+    # Remove quebras de linha para tratar o texto como fluxo contínuo
+    text_flat = page_text.replace('\n', ' ').replace('\r', ' ')
+    
+    # Regex que busca 'ANO REFERENCIA' + caracteres opcionais + 4 dígitos
+    match = re.search(r'ANO REFER[ÊE]NCIA.*?(\d{4})', text_flat, re.IGNORECASE)
+    
+    if match:
+        return match.group(1)
+    return None
+
+def processar_pdf(file):
+    """Lê o PDF e transforma as tabelas horizontais em formato de banco de dados (Competência/Valor)."""
+    dados_consolidados = []
     
     with pdfplumber.open(file) as pdf:
         for page_num, page in enumerate(pdf.pages):
             text = page.extract_text()
-            if not text:
-                continue # Pula páginas em branco ou imagens sem OCR
+            if not text: 
+                continue
             
-            # 1. BUSCA INTELIGENTE DO ANO DE REFERÊNCIA
-            match_ano = re.search(r'ANO REFER[ÊE]NCIA\s*[\n\r]*\s*(\d{4})', text, re.IGNORECASE)
-            
-            if match_ano:
-                ano_referencia = match_ano.group(1)
-            else:
-                ano_referencia = f"Desconhecido (Pág {page_num+1})"
+            # 1. Identificar o Ano da Página
+            ano = extrair_ano_robusto(text)
+            if not ano:
+                # Se falhar, tenta achar no topo da página um ano isolado ou marca como INDEFINIDO
+                ano = f"INDEFINIDO_PAG_{page_num+1}"
 
-            # 2. EXTRAÇÃO DA TABELA
+            # 2. Extrair Tabelas da Página
             tables = page.extract_tables()
             
             for table in tables:
-                df_page = pd.DataFrame(table)
-                df_page = df_page.dropna(how='all') # Remove linhas totalmente vazias
+                df = pd.DataFrame(table)
                 
-                if df_page.shape[1] < 2: 
+                # Limpeza básica de linhas vazias
+                df = df.dropna(how='all')
+                if df.shape[1] < 2: 
                     continue
                 
-                # Procurar a linha de cabeçalho
-                header_index = -1
-                for idx, row in df_page.iterrows():
+                # 3. Localizar o Cabeçalho (Linha que contém 'DISCRIMINAÇÃO' ou similar)
+                header_idx = -1
+                for idx, row in df.iterrows():
                     row_str = " ".join([str(x) for x in row]).upper()
                     if "DISCRIMINA" in row_str:
-                        header_index = idx
+                        header_idx = idx
                         break
                 
-                if header_index != -1:
-                    # Ajustar cabeçalho
-                    new_header = df_page.iloc[header_index].values
-                    df_page = df_page.iloc[header_index+1:].copy()
-                    
-                    # Normalizar nomes das colunas
-                    clean_header = [str(c).strip().upper() if c else f"COL_{i}" for i, c in enumerate(new_header)]
-                    
-                    # CORREÇÃO PRINCIPAL: Garantir nomes únicos
-                    df_page.columns = make_columns_unique(clean_header)
-                    
-                    # 3. TRATAMENTO DE TIPO (PROVENTO vs DESCONTO)
-                    # Verifica se existe coluna TIPO ou similar
-                    col_tipo = next((c for c in df_page.columns if "TIPO" in c), None)
-                    
-                    if col_tipo:
-                        # Preenche vazios para baixo (ffill)
-                        df_page[col_tipo] = df_page[col_tipo].replace("", None).ffill()
-                    
-                    # Adicionar coluna do Ano
-                    df_page.insert(0, "ANO_REF", ano_referencia)
-                    
-                    # Padronizar a coluna "DISCRIMINAÇÃO" para "RUBRICA"
-                    col_rubrica = next((c for c in df_page.columns if "DISCRIMINA" in c), None)
-                    if col_rubrica:
-                        df_page.rename(columns={col_rubrica: "RUBRICA"}, inplace=True)
-                        
-                        # Filtros de limpeza
-                        df_page = df_page[df_page["RUBRICA"].notna()]
-                        df_page = df_page[df_page["RUBRICA"].astype(str).str.strip() != ""]
-                        df_page = df_page[~df_page["RUBRICA"].astype(str).str.contains("DISCRIMINA", case=False)]
-                        
-                        all_data.append(df_page)
-
-    if all_data:
-        # Concatenar ignorando index para evitar o erro de reindexing
-        return pd.concat(all_data, ignore_index=True)
-    else:
-        return pd.DataFrame()
-
-# --- Interface Principal ---
-uploaded_file = st.file_uploader("Arraste seu PDF aqui", type=["pdf"])
-
-if uploaded_file:
-    with st.spinner("Processando... Lendo Ano de Referência e Rubricas..."):
-        try:
-            df_final = extract_data_from_pdf(uploaded_file)
-            
-            if not df_final.empty:
-                st.success("Dados extraídos com sucesso!")
+                if header_idx == -1: 
+                    continue # Não é a tabela financeira desejada
                 
-                # --- FILTROS LATERAIS ---
-                st.sidebar.header("Filtros de Exportação")
+                # Definir novo cabeçalho e cortar o dataframe
+                df.columns = df.iloc[header_idx]
+                df = df.iloc[header_idx+1:].copy()
                 
-                # 1. Filtro de Ano
-                anos_disponiveis = sorted(df_final['ANO_REF'].unique())
-                anos_selecionados = st.sidebar.multiselect(
-                    "Selecione o Ano de Referência", 
-                    options=anos_disponiveis,
-                    default=anos_disponiveis
+                # Normalizar nomes das colunas (Upper case, strip)
+                df.columns = [str(c).strip().upper() for c in df.columns]
+                
+                # Identificar colunas chave
+                col_tipo = next((c for c in df.columns if "TIPO" in c), None)
+                col_rubrica = next((c for c in df.columns if "DISCRIMINA" in c), None)
+                
+                if not col_rubrica: 
+                    continue
+
+                # Preencher a coluna TIPO (ffill) pois o PDF só traz na primeira linha do grupo
+                if col_tipo:
+                    df[col_tipo] = df[col_tipo].replace('', pd.NA).ffill()
+                    df.rename(columns={col_tipo: 'TIPO'}, inplace=True)
+                else:
+                    df['TIPO'] = 'GERAL' # Caso não exista coluna Tipo
+                
+                # Renomear Rubrica
+                df.rename(columns={col_rubrica: 'RUBRICA'}, inplace=True)
+                
+                # Remover linhas de cabeçalho repetido ou totais
+                df = df[df['RUBRICA'] != 'DISCRIMINAÇÃO']
+                df = df[~df['RUBRICA'].str.contains('TOTAL', na=False, case=False)]
+                
+                # 4. TRANSFORMAÇÃO (Unpivot/Melt)
+                # Identificar colunas que são Meses (JAN, FEV...)
+                cols_meses = [c for c in df.columns if c[:3] in MAPA_MESES]
+                
+                if not cols_meses: 
+                    continue
+                
+                # Transforma colunas de meses em linhas
+                df_melted = df.melt(
+                    id_vars=['TIPO', 'RUBRICA'], 
+                    value_vars=cols_meses,
+                    var_name='MES_NOME',
+                    value_name='VALOR_STR'
                 )
-                df_filtered = df_final[df_final['ANO_REF'].isin(anos_selecionados)]
                 
-                # 2. Filtro de Tipo (Proventos/Descontos)
-                # Tenta achar a coluna de tipo (pode ter mudado de nome devido à unicidade, então buscamos por string)
-                col_tipo_final = next((c for c in df_filtered.columns if "TIPO" in c), None)
+                # Converter valores monetários
+                df_melted['VALOR'] = df_melted['VALOR_STR'].apply(limpar_valor_monetario)
                 
-                if col_tipo_final:
-                    df_filtered[col_tipo_final] = df_filtered[col_tipo_final].astype(str).str.strip().str.upper()
+                # Filtrar apenas valores maiores que zero (remove meses vazios)
+                df_melted = df_melted[df_melted['VALOR'] > 0]
+                
+                if df_melted.empty:
+                    continue
+
+                # Criar coluna COMPETENCIA (MM/AAAA)
+                df_melted['ANO'] = ano
+                df_melted['MES_NUM'] = df_melted['MES_NOME'].apply(lambda x: MAPA_MESES.get(x[:3], '00'))
+                df_melted['COMPETENCIA'] = df_melted['MES_NUM'] + '/' + df_melted['ANO']
+                
+                # Selecionar colunas finais
+                df_final = df_melted[['COMPETENCIA', 'TIPO', 'RUBRICA', 'VALOR']]
+                dados_consolidados.append(df_final)
+
+    if dados_consolidados:
+        return pd.concat(dados_consolidados, ignore_index=True)
+    return pd.DataFrame()
+
+# --- Função Principal ---
+def main():
+    setup_page()
+    
+    uploaded_file = st.file_uploader("Arraste seu PDF aqui", type=["pdf"])
+    
+    if uploaded_file:
+        with st.spinner("Processando PDF e gerando competências..."):
+            try:
+                df = processar_pdf(uploaded_file)
+                
+                if not df.empty:
+                    # Ordenação Cronológica para exibição
+                    # Cria coluna auxiliar de data para ordenar corretamente
+                    df['DATA_ORDEM'] = pd.to_datetime(df['COMPETENCIA'], format='%m/%Y', errors='coerce')
+                    df = df.sort_values(by=['DATA_ORDEM', 'TIPO', 'RUBRICA'])
+                    df = df.drop(columns=['DATA_ORDEM'])
                     
-                    tipo_selecionado = st.sidebar.radio(
-                        "O que você quer visualizar?",
-                        options=["TUDO", "APENAS RENDIMENTOS", "APENAS DESCONTOS"]
+                    st.success(f"Sucesso! {len(df)} registros extraídos.")
+                    
+                    # --- FILTROS (SIDEBAR) ---
+                    st.sidebar.header("Filtros")
+                    
+                    # 1. Filtro de Competência
+                    todas_comp = sorted(df['COMPETENCIA'].unique(), 
+                                      key=lambda x: (x.split('/')[1], x.split('/')[0])) # Ordena por Ano depois Mês
+                    comp_selecionadas = st.sidebar.multiselect(
+                        "Competências (MM/AAAA)", 
+                        options=todas_comp, 
+                        default=todas_comp
                     )
                     
-                    if tipo_selecionado == "APENAS RENDIMENTOS":
-                        df_filtered = df_filtered[df_filtered[col_tipo_final].str.contains("REND|PROV", na=False)]
-                    elif tipo_selecionado == "APENAS DESCONTOS":
-                        df_filtered = df_filtered[df_filtered[col_tipo_final].str.contains("DESC", na=False)]
-                
-                # 3. Filtro de Rubricas
-                if "RUBRICA" in df_filtered.columns:
-                    rubricas_disponiveis = sorted(df_filtered["RUBRICA"].unique())
+                    # 2. Filtro de Tipo (Proventos/Descontos)
+                    tipos_disponiveis = df['TIPO'].unique()
+                    tipos_selecionados = st.sidebar.multiselect(
+                        "Tipo", 
+                        options=tipos_disponiveis, 
+                        default=tipos_disponiveis
+                    )
+                    
+                    # Filtragem Intermediária (para atualizar rubricas disponíveis)
+                    df_temp = df[
+                        (df['COMPETENCIA'].isin(comp_selecionadas)) & 
+                        (df['TIPO'].isin(tipos_selecionados))
+                    ]
+                    
+                    # 3. Filtro de Rubrica
+                    rubricas_disponiveis = sorted(df_temp['RUBRICA'].unique())
                     rubricas_selecionadas = st.sidebar.multiselect(
-                        "Selecione as Rubricas Específicas",
-                        options=rubricas_disponiveis,
+                        "Rubricas", 
+                        options=rubricas_disponiveis, 
                         default=rubricas_disponiveis
                     )
-                    df_view = df_filtered[df_filtered["RUBRICA"].isin(rubricas_selecionadas)]
+                    
+                    # --- DATAFRAME FINAL ---
+                    df_view = df_temp[df_temp['RUBRICA'].isin(rubricas_selecionadas)]
+                    
+                    # Exibir tabela formatada
+                    st.subheader("Visualização dos Dados")
+                    st.dataframe(
+                        df_view.style.format({'VALOR': 'R$ {:,.2f}'}), 
+                        use_container_width=True,
+                        height=500
+                    )
+                    
+                    # Botão de Download
+                    csv = df_view.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
+                    st.download_button(
+                        label="💾 Baixar CSV (Excel)",
+                        data=csv,
+                        file_name="siape_financeiro_competencias.csv",
+                        mime="text/csv",
+                    )
+                    
                 else:
-                    df_view = df_filtered
-                
-                # --- EXIBIÇÃO ---
-                st.subheader(f"Visualizando {len(df_view)} registros")
-                st.dataframe(df_view, use_container_width=True)
-                
-                # Botão de Download
-                csv = df_view.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="💾 Baixar CSV Selecionado",
-                    data=csv,
-                    file_name="extracao_financeira_ajustada.csv",
-                    mime="text/csv",
-                )
-                
-            else:
-                st.error("Não foi possível identificar tabelas financeiras padrão neste PDF.")
-                
-        except Exception as e:
-            st.error(f"Ocorreu um erro técnico: {e}")
-            st.code(e) # Mostra o erro exato para facilitar debug se necessário
+                    st.warning("O PDF foi lido, mas não encontramos tabelas financeiras no formato esperado.")
+                    st.info("Dica: Verifique se o PDF contém as colunas 'DISCRIMINAÇÃO' e meses (JAN, FEV...).")
+                    
+            except Exception as e:
+                st.error(f"Erro ao processar o arquivo: {e}")
+                # st.exception(e) # Descomente para ver o erro completo em desenvolvimento
+
+# --- Ponto de Entrada ---
+if __name__ == "__main__":
+    main()
