@@ -1,5 +1,5 @@
 # app.py
-# Extrator de Rubricas – Ficha Financeira SIAPE (robusto por blocos)
+# Extrator de Rubricas – Ficha Financeira SIAPE (controle exato de competências)
 # Requisitos: streamlit, pdfplumber, pandas
 
 import streamlit as st
@@ -36,7 +36,6 @@ def extrair_dados(pdf_bytes):
 
             i = 0
             while i < len(linhas):
-                # Detecta início de uma ficha
                 if not INICIO_FICHA_RE.search(linhas[i]):
                     i += 1
                     continue
@@ -48,51 +47,41 @@ def extrair_dados(pdf_bytes):
                     i += 1
 
                 bloco_texto = "\n".join(bloco)
-
                 ano_match = ANO_RE.search(bloco_texto)
                 if not ano_match:
                     continue
                 ano = ano_match.group(1)
 
-                # Localiza cabeçalho da tabela
                 linhas_bloco = bloco_texto.split("\n")
                 cabecalho_idx = None
                 for idx, linha in enumerate(linhas_bloco):
                     if linha.strip().startswith("Rubrica|"):
                         cabecalho_idx = idx
                         break
-
                 if cabecalho_idx is None:
                     continue
 
-                # Meses na ordem visual
-                meses = []
-                for token in linhas_bloco[cabecalho_idx].split("|"):
-                    t = token.strip()
-                    if t in MESES:
-                        meses.append(t)
+                cabecalho_cols = [c.strip() for c in linhas_bloco[cabecalho_idx].split("|")]
+                meses = [c for c in cabecalho_cols if c in MESES]
+                primeira_col_mes = cabecalho_cols.index(meses[0])
 
-                # Processa linhas até TOTAL LÍQUIDO ou fim do bloco
                 for linha in linhas_bloco[cabecalho_idx + 1:]:
                     if FIM_FICHA_RE.search(linha):
                         break
 
                     colunas = [c.strip() for c in linha.split("|")]
-                    if len(colunas) < 5:
+                    if len(colunas) <= primeira_col_mes:
                         continue
 
                     codigo = colunas[0]
                     rubrica = colunas[1]
                     tipo_rd = colunas[2]
 
-                    # Valores preservando posição por coluna
-                    valores = []
-                    for c in colunas:
-                        m = VALOR_RE.search(c)
-                        valores.append(m.group(0) if m else None)
+                    valores_mes = colunas[primeira_col_mes:primeira_col_mes + len(meses)]
 
-                    for mes, valor in zip(meses, valores):
-                        if not valor:
+                    for mes, celula in zip(meses, valores_mes):
+                        m = VALOR_RE.search(celula)
+                        if not m:
                             continue
 
                         competencia = f"{MESES[mes]}/{ano}"
@@ -102,7 +91,7 @@ def extrair_dados(pdf_bytes):
                             "Rubrica": rubrica,
                             "Tipo": "Receita" if tipo_rd.strip() == "R" else "Despesa",
                             "Competencia": competencia,
-                            "Valor": f"R$ {valor}",
+                            "Valor": f"R$ {m.group(0)}",
                             "Pagina": page_num
                         })
 
