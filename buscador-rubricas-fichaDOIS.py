@@ -76,10 +76,13 @@ def extrair_dados(pdf_bytes):
                     codigo = colunas[0]
                     # Normaliza encoding da rubrica (corrige OLÃ© -> OLÉ)
                     # Normaliza encoding da rubrica sem perder acentos
+                    # Normaliza encoding da rubrica de forma segura (sem quebrar o app)
                     rubrica = colunas[1]
-                    try:
-                        # caso típico: texto veio em UTF-8 interpretado como Latin-1
-                        rubrica = rubrica.encode('latin1').decode('utf-8')
+                    if "Ã" in rubrica:
+                        try:
+                            rubrica = rubrica.encode("latin1").decode("utf-8")
+                        except (UnicodeEncodeError, UnicodeDecodeError):
+                            rubrica = rubrica.encode('latin1').decode('utf-8')
                     except UnicodeEncodeError:
                         # fallback: mantém texto original
                         rubrica = rubrica
