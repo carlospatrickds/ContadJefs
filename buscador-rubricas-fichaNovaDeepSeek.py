@@ -714,7 +714,7 @@ def main():
             st.success("Configurações salvas!")
     
     # Área principal
-    st.title("🚀 Extrator Avançado de Demonstrativos Financeiros - observa DEMONSTRATIVO DE RENDIMENTO ANUAL")
+    st.title("📈💲🏦 Extrator Avançado de Demonstrativos Financeiros - observa DEMONSTRATIVO DE RENDIMENTO ANUAL")
     
     # Upload do arquivo
     st.subheader("📁 Upload do Arquivo")
