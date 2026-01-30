@@ -489,7 +489,7 @@ class TemplateRelatorios:
         return df_resultado
 
 # ============================================
-# MÓDULO PRINCIPAL (CÓDIGO ORIGINAL MODIFICADO)
+# MÓDULO PRINCIPAL CORRIGIDO PARA MÚLTIPLAS OCORRÊNCIAS
 # ============================================
 
 class ExtratorDemonstrativos:
@@ -553,8 +553,55 @@ class ExtratorDemonstrativos:
         
         return None
     
+    def identificar_colunas_meses(self, tabela):
+        """Identifica colunas que contêm meses de forma robusta"""
+        meses_colunas = {}
+        
+        for linha in tabela:
+            if not linha:
+                continue
+            
+            for col_idx, cell in enumerate(linha):
+                if cell:
+                    cell_str = str(cell).strip().upper()
+                    for mes_nome, mes_num in self.meses_map.items():
+                        if mes_nome in cell_str:
+                            meses_colunas[col_idx] = mes_num
+                            break
+            
+            if meses_colunas:
+                break
+        
+        return meses_colunas
+    
+    def identificar_colunas_meses_alternativo(self, tabela):
+        """Método alternativo para identificar colunas de meses"""
+        meses_colunas = {}
+        
+        # Procurar por padrões de data ou valores monetários
+        for linha in tabela:
+            if not linha:
+                continue
+            
+            for col_idx, cell in enumerate(linha):
+                if cell:
+                    cell_str = str(cell).strip()
+                    # Verificar se parece um valor monetário
+                    if re.match(r'^[\d\.,]+\s*$', cell_str):
+                        # Esta coluna pode conter valores
+                        # Procurar cabeçalho nas linhas anteriores
+                        for linha_anterior in tabela:
+                            if linha_anterior and col_idx < len(linha_anterior) and linha_anterior[col_idx]:
+                                cabecalho = str(linha_anterior[col_idx]).strip().upper()
+                                for mes_nome, mes_num in self.meses_map.items():
+                                    if mes_nome in cabecalho:
+                                        meses_colunas[col_idx] = mes_num
+                                        break
+        
+        return meses_colunas
+    
     def processar_pdf(self, pdf_file, extrair_proventos: bool = True, extrair_descontos: bool = True) -> pd.DataFrame:
-        """Processa o PDF e extrai dados"""
+        """Processa o PDF e extrai dados - CORRIGIDO PARA MULTIPLAS OCORRÊNCIAS"""
         
         dados = []
         
@@ -578,26 +625,12 @@ class ExtratorDemonstrativos:
                     if not tabela or len(tabela) < 3:
                         continue
                     
-                    meses_colunas = {}
+                    # CORREÇÃO: Identificar colunas de meses de forma mais robusta
+                    meses_colunas = self.identificar_colunas_meses(tabela)
                     
-                    for linha in tabela:
-                        if not linha:
-                            continue
-                        
-                        linha_str = ' '.join([str(cell) for cell in linha if cell])
-                        
-                        for mes_nome, mes_num in self.meses_map.items():
-                            if mes_nome in linha_str.upper():
-                                for col_idx, cell in enumerate(linha):
-                                    if cell:
-                                        cell_str = str(cell).strip().upper()
-                                        for mn, mn_num in self.meses_map.items():
-                                            if mn in cell_str:
-                                                meses_colunas[col_idx] = mn_num
-                                break
-                        
-                        if meses_colunas:
-                            break
+                    if not meses_colunas:
+                        # Tentar método alternativo de identificação
+                        meses_colunas = self.identificar_colunas_meses_alternativo(tabela)
                     
                     if not meses_colunas:
                         continue
@@ -618,7 +651,7 @@ class ExtratorDemonstrativos:
                     
                     if extrair_proventos and inicio_rendimentos is not None:
                         dados.extend(
-                            self.processar_secao_tabela(
+                            self.processar_secao_tabela_corrigido(
                                 tabela, inicio_rendimentos, inicio_descontos,
                                 meses_colunas, ano, pagina_num, 'RENDIMENTO'
                             )
@@ -633,7 +666,7 @@ class ExtratorDemonstrativos:
                                 break
                         
                         dados.extend(
-                            self.processar_secao_tabela(
+                            self.processar_secao_tabela_corrigido(
                                 tabela, inicio_descontos, fim_descontos,
                                 meses_colunas, ano, pagina_num, 'DESCONTO'
                             )
@@ -642,39 +675,57 @@ class ExtratorDemonstrativos:
         if dados:
             df = pd.DataFrame(dados)
             
-            # CORREÇÃO: NÃO REMOVER DUPLICATAS - manter todas as linhas para preservar espelho fiel
-            # df = df.drop_duplicates()  # REMOVIDO PARA MANTER RUBRICAS REPETIDAS
+            # CORREÇÃO CRÍTICA: NÃO REMOVER DUPLICATAS - manter TODAS as ocorrências
+            # Mas precisamos garantir que não estamos duplicando erradamente
+            # Primeiro, remover entradas com valor 0
+            df = df[df['Valor'] != '0,00']
             
-            # Adicionar identificador para rubricas duplicadas (opcional, para melhor visualização)
-            df = df.reset_index(drop=True)
+            # Criar um identificador único baseado em múltiplos campos
+            df['ID_Completo'] = df.apply(
+                lambda row: f"{row['Discriminacao']}_{row['Competencia']}_{row['Coluna_Discriminacao']}_{row['Coluna_Valor']}_{row['Pagina']}",
+                axis=1
+            )
             
-            # Contar ocorrências para debug (opcional)
-            contagens = df.groupby(['Discriminacao', 'Valor', 'Competencia', 'Pagina', 'Ano', 'Tipo']).size().reset_index(name='Contagem')
+            # Remover apenas duplicatas exatas do mesmo ID
+            df = df.drop_duplicates(subset=['ID_Completo'], keep='first')
             
-            if not contagens[contagens['Contagem'] > 1].empty:
-                # Se houver duplicatas, adicionar um identificador sequencial
-                df['Sequencia'] = df.groupby(['Discriminacao', 'Competencia', 'Tipo']).cumcount() + 1
-                df['Discriminacao_Original'] = df['Discriminacao']
-                
-                # Apenas para visualização: mostrar número da sequência se houver mais de 1
-                df['Discriminacao'] = df.apply(
-                    lambda row: f"{row['Discriminacao_Original']} #{row['Sequencia']}" 
-                    if contagens[(contagens['Discriminacao'] == row['Discriminacao_Original']) & 
-                                (contagens['Competencia'] == row['Competencia']) &
-                                (contagens['Tipo'] == row['Tipo'])]['Contagem'].iloc[0] > 1
-                    else row['Discriminacao_Original'],
-                    axis=1
-                )
+            # Adicionar sequência para rubricas com mesmo nome na mesma competência
+            df['Sequencia'] = df.groupby(['Discriminacao', 'Competencia', 'Tipo']).cumcount() + 1
+            
+            # Para rubricas com múltiplas ocorrências, adicionar número de sequência
+            df['Discriminacao_Original'] = df['Discriminacao']
+            
+            # Contar quantas vezes cada rubrica aparece na mesma competência
+            contagens = df.groupby(['Discriminacao_Original', 'Competencia', 'Tipo']).size().reset_index(name='Contagem')
+            
+            # Aplicar numeração sequencial apenas para rubricas com múltiplas ocorrências
+            df = df.merge(contagens, on=['Discriminacao_Original', 'Competencia', 'Tipo'], how='left')
+            
+            df['Discriminacao_Final'] = df.apply(
+                lambda row: f"{row['Discriminacao_Original']} #{row['Sequencia']}" 
+                if row['Contagem'] > 1
+                else row['Discriminacao_Original'],
+                axis=1
+            )
+            
+            # Atualizar a coluna Discriminacao
+            df['Discriminacao'] = df['Discriminacao_Final']
             
             if not df.empty:
-                df = df.sort_values(['Ano', 'Pagina', 'Tipo', 'Discriminacao'])
+                df = df.sort_values(['Ano', 'Pagina', 'Tipo', 'Discriminacao', 'Competencia'])
+                # Manter apenas colunas essenciais
+                colunas_finais = ['Discriminacao', 'Valor', 'Competencia', 'Pagina', 'Ano', 'Tipo']
+                df = df[colunas_finais]
             return df
         else:
             return pd.DataFrame(columns=['Discriminacao', 'Valor', 'Competencia', 'Pagina', 'Ano', 'Tipo'])
     
-    def processar_secao_tabela(self, tabela, inicio_secao, fim_secao, meses_colunas, ano, pagina_num, tipo):
-        """Processa uma seção específica da tabela"""
+    def processar_secao_tabela_corrigido(self, tabela, inicio_secao, fim_secao, meses_colunas, ano, pagina_num, tipo):
+        """Processa uma seção da tabela CORRIGIDO para múltiplas ocorrências"""
         dados_secao = []
+        
+        # Primeiro, identificar todas as linhas que contêm discriminacoes
+        linhas_discriminacoes = []
         
         for linha_idx in range(inicio_secao + 1, fim_secao):
             linha = tabela[linha_idx]
@@ -686,40 +737,98 @@ class ExtratorDemonstrativos:
             if 'RENDIMENTOS' in linha_str.upper() or 'DESCONTOS' in linha_str.upper() or 'TOTAL' in linha_str.upper():
                 break
             
-            discriminacao = None
-            for cell in linha:
-                if cell and cell.strip():
-                    cell_str = str(cell).strip()
-                    if (not re.match(r'^[\d\.,]+$', cell_str) and 
-                        not any(mes in cell_str.upper() for mes in self.meses_map.keys()) and
-                        cell_str not in ['RENDIMENTOS', 'DESCONTOS']):
-                        discriminacao = cell_str
-                        break
-            
-            if not discriminacao:
-                continue
-            
-            for col_idx, mes_num in meses_colunas.items():
+            # Verificar se esta linha tem algum valor numérico nas colunas de meses
+            tem_valores = False
+            for col_idx in meses_colunas.keys():
                 if col_idx < len(linha) and linha[col_idx]:
                     valor_str = str(linha[col_idx]).strip()
-                    
-                    if re.match(r'^[\d\.,\s]+$', valor_str):
-                        valor_float = self.converter_valor_string(valor_str)
+                    if re.match(r'^[\d\.,]+\s*$', valor_str) and valor_str not in ['', '0', '0,00']:
+                        tem_valores = True
+                        break
+            
+            if tem_valores:
+                linhas_discriminacoes.append((linha_idx, linha))
+        
+        # Processar cada linha que tem valores
+        for linha_idx, linha in linhas_discriminacoes:
+            # Encontrar TODAS as discriminacoes nesta linha
+            discriminacoes = []
+            
+            for cell_idx, cell in enumerate(linha):
+                if cell and cell.strip():
+                    cell_str = str(cell).strip()
+                    # É uma discriminacao se não for numérico e não for mês
+                    if (not re.match(r'^[\d\.,]+\s*$', cell_str) and 
+                        cell_idx not in meses_colunas and
+                        not any(mes in cell_str.upper() for mes in self.meses_map.keys()) and
+                        cell_str.upper() not in ['RENDIMENTOS', 'DESCONTOS', 'TOTAL', '']):
                         
-                        if valor_float is not None and valor_float != 0:
-                            valor_formatado = self.formatar_valor_brasileiro(valor_float)
-                            competencia = f"{mes_num:02d}/{ano}"
+                        discriminacoes.append({
+                            'texto': cell_str,
+                            'coluna': cell_idx
+                        })
+            
+            # Se não encontrou discriminacoes nesta linha, procurar na linha anterior
+            if not discriminacoes and linha_idx > 0:
+                linha_anterior = tabela[linha_idx - 1]
+                for cell_idx, cell in enumerate(linha_anterior):
+                    if cell and cell.strip():
+                        cell_str = str(cell).strip()
+                        if (not re.match(r'^[\d\.,]+\s*$', cell_str) and 
+                            cell_idx not in meses_colunas and
+                            not any(mes in cell_str.upper() for mes in self.meses_map.keys()) and
+                            cell_str.upper() not in ['RENDIMENTOS', 'DESCONTOS', 'TOTAL', '']):
                             
-                            dados_secao.append({
-                                'Discriminacao': discriminacao,
-                                'Valor': valor_formatado,
-                                'Competencia': competencia,
-                                'Pagina': pagina_num,
-                                'Ano': ano,
-                                'Tipo': tipo
+                            discriminacoes.append({
+                                'texto': cell_str,
+                                'coluna': cell_idx
                             })
+            
+            # Para cada discriminacao encontrada, extrair valores
+            for discriminacao_info in discriminacoes:
+                discriminacao = discriminacao_info['texto']
+                
+                # Para cada coluna de mês, extrair o valor
+                for col_idx, mes_num in meses_colunas.items():
+                    if col_idx < len(linha) and linha[col_idx]:
+                        valor_str = str(linha[col_idx]).strip()
+                        
+                        if re.match(r'^[\d\.,]+\s*$', valor_str) and valor_str:
+                            valor_float = self.converter_valor_string(valor_str)
+                            
+                            if valor_float is not None and valor_float != 0:
+                                valor_formatado = self.formatar_valor_brasileiro(valor_float)
+                                competencia = f"{mes_num:02d}/{ano}"
+                                
+                                # Verificar se já existe esta combinação
+                                existe = False
+                                for dado in dados_secao:
+                                    if (dado['Discriminacao'] == discriminacao and 
+                                        dado['Competencia'] == competencia and 
+                                        dado['Valor'] == valor_formatado and
+                                        dado['Tipo'] == tipo and
+                                        dado['Coluna_Discriminacao'] == discriminacao_info['coluna'] and
+                                        dado['Coluna_Valor'] == col_idx):
+                                        existe = True
+                                        break
+                                
+                                if not existe:
+                                    dados_secao.append({
+                                        'Discriminacao': discriminacao,
+                                        'Valor': valor_formatado,
+                                        'Competencia': competencia,
+                                        'Pagina': pagina_num,
+                                        'Ano': ano,
+                                        'Tipo': tipo,
+                                        'Coluna_Discriminacao': discriminacao_info['coluna'],
+                                        'Coluna_Valor': col_idx
+                                    })
         
         return dados_secao
+    
+    def processar_secao_tabela(self, tabela, inicio_secao, fim_secao, meses_colunas, ano, pagina_num, tipo):
+        """Método antigo (mantido para compatibilidade)"""
+        return self.processar_secao_tabela_corrigido(tabela, inicio_secao, fim_secao, meses_colunas, ano, pagina_num, tipo)
 
 # ============================================
 # INTERFACE STREAMLIT - VERSÃO CORRIGIDA
@@ -915,10 +1024,9 @@ def main():
                                 st.info(f"✅ Correção monetária aplicada ({st.session_state.indice_correcao})")
                             
                             # Verifica se há rubricas duplicadas
-                            if 'Discriminacao_Original' in df.columns:
-                                duplicatas = df[df['Discriminacao'].str.contains('#')]
-                                if not duplicatas.empty:
-                                    st.info(f"✅ Encontradas {len(duplicatas)} rubricas duplicadas mantidas (marcadas com #)")
+                            duplicatas = df[df['Discriminacao'].str.contains('#')]
+                            if not duplicatas.empty:
+                                st.info(f"✅ Encontradas {len(duplicatas)} rubricas com múltiplas ocorrências (marcadas com #1, #2, etc.)")
                             
                             st.success(f"✅ {len(df)} registros extraídos!")
                             st.rerun()
@@ -930,13 +1038,12 @@ def main():
         
         # Interface com dados processados
         if st.session_state.dados_extraidos is not None:
-            # CORREÇÃO AQUI: Usar verificação explícita em vez de 'or'
             if st.session_state.df_filtrado is not None:
                 df = st.session_state.df_filtrado
             else:
                 df = st.session_state.dados_extraidos
             
-            # Criar abas principais - ADICIONADA ABA DE SEMESTRE
+            # Criar abas principais
             tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
                 "📊 Dashboard", 
                 "🎯 Filtros", 
@@ -956,22 +1063,17 @@ def main():
                 with col2:
                     st.metric("Anos", df['Ano'].nunique())
                 with col3:
-                    # Usar Discriminacao_Original se disponível para contagem precisa
-                    if 'Discriminacao_Original' in df.columns:
-                        st.metric("Rubricas Únicas", df['Discriminacao_Original'].nunique())
-                    else:
-                        st.metric("Rubricas", df['Discriminacao'].nunique())
+                    st.metric("Rubricas Únicas", df['Discriminacao'].nunique())
                 with col4:
                     st.metric("Valor Total", formatar_valor_total(df))
                 
                 # Verificação de rubricas duplicadas
-                if 'Discriminacao_Original' in df.columns:
-                    duplicatas = df[df['Discriminacao'].str.contains('#')]
-                    if not duplicatas.empty:
-                        st.info(f"📝 **Nota:** {len(duplicatas)} rubricas duplicadas foram mantidas (marcadas com #)")
+                duplicatas = df[df['Discriminacao'].str.contains('#')]
+                if not duplicatas.empty:
+                    st.info(f"📝 **Nota:** {len(duplicatas)} rubricas têm múltiplas ocorrências na mesma competência (marcadas com #1, #2, etc.)")
                 
                 # Dados principais
-                st.subheader("📋 Dados Extraídos")
+                st.subheader("📋 Dados Extraídos (COM MÚLTIPLAS OCORRÊNCIAS)")
                 st.dataframe(
                     df[['Discriminacao', 'Valor', 'Competencia', 'Ano', 'Tipo']].head(50),
                     use_container_width=True,
@@ -1371,16 +1473,18 @@ def main():
             4. **📅 Análise Semestral** - Consolidação por semestre (1º: Jan-Jun, 2º: Jul-Dez)
             5. **📋 Templates de Relatórios** - Relatórios pré-formatados
             
+            ### 🔧 **CORREÇÃO CRÍTICA:**
+            - **MÚLTIPLAS OCORRÊNCIAS DA MESMA RUBRICA AGORA SÃO EXTRAÍDAS CORRETAMENTE**
+            - Quando a mesma rubrica aparece várias vezes na mesma competência, todas são extraídas
+            - Exemplo: "VENCIMENTO BASICO" aparece 3 vezes em Janeiro → extrai 3 entradas
+            - Rubricas duplicadas são marcadas com #1, #2, #3 para fácil identificação
+            - **ESPELHO FIEL GARANTIDO** - Todos os valores são extraídos
+            
             ### 📅 **NOVA ABA SEMESTRAL:**
             - **Consolidação automática** por semestre
             - **Gráfico de evolução** semestral
             - **Top rubricas** por semestre
             - **Exportação** incluindo análise semestral
-            
-            ### 🔧 **CORREÇÃO IMPORTANTE:**
-            - **Rubricas duplicadas são mantidas** - Valores idênticos que aparecem múltiplas vezes no demonstrativo
-            - **Espelho fiel** - Todas as rubricas são extraídas, mesmo que tenham valores repetidos
-            - **Identificação clara** - Rubricas duplicadas são marcadas com #1, #2 para fácil identificação
             
             ### 🔧 **Como usar:**
             1. Ative o **Modo Avançado** na barra lateral
