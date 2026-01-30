@@ -644,8 +644,8 @@ def exportar_dados(df, formato, nome_arquivo):
 
 def main():
     st.set_page_config(
-        page_title="📈 Análise de Rubricas",
-        page_icon="📈💲🏦",
+        page_title="🐳 Análise de Rubricas",
+        page_icon="📈💲",
         layout="wide",
         initial_sidebar_state="expanded"
     )
