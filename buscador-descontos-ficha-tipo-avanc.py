@@ -282,7 +282,152 @@ class AnalisadorComparativo:
         }
 
 # ============================================
-# MÓDULO 4: TEMPLATES DE RELATÓRIOS
+# MÓDULO 4: ANÁLISE POR SEMESTRE
+# ============================================
+
+class AnalisadorSemestral:
+    """Realiza análises de dados por semestre"""
+    
+    @staticmethod
+    def calcular_semestre(mes: int) -> int:
+        """Determina o semestre com base no mês"""
+        return 1 if mes <= 6 else 2
+    
+    @staticmethod
+    def analisar_por_semestre(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Agrupa dados por semestre e retorna análise consolidada
+        """
+        if df.empty:
+            return pd.DataFrame()
+        
+        # Cria cópia para não alterar o original
+        df_analise = df.copy()
+        
+        # Converte valores para numérico
+        extrator = ExtratorDemonstrativos()
+        df_analise['Valor_Numerico'] = df_analise['Valor'].apply(
+            lambda x: extrator.converter_valor_string(x) or 0
+        )
+        
+        # Extrai mês e ano da competência
+        try:
+            df_analise['Mes'] = df_analise['Competencia'].apply(lambda x: int(x.split('/')[0]))
+            df_analise['Ano'] = df_analise['Competencia'].apply(lambda x: int(x.split('/')[1]))
+        except:
+            return pd.DataFrame()
+        
+        # Determina o semestre
+        df_analise['Semestre'] = df_analise['Mes'].apply(AnalisadorSemestral.calcular_semestre)
+        df_analise['Semestre_Label'] = df_analise.apply(
+            lambda row: f"{row['Ano']} - {row['Semestre']}º Sem", axis=1
+        )
+        
+        # Agrupa por semestre e tipo
+        semestral_tipo = df_analise.groupby(['Ano', 'Semestre', 'Semestre_Label', 'Tipo'])['Valor_Numerico'].sum().reset_index()
+        
+        # Pivot para ter tipos como colunas
+        pivot_semestral = semestral_tipo.pivot_table(
+            values='Valor_Numerico',
+            index=['Ano', 'Semestre', 'Semestre_Label'],
+            columns='Tipo',
+            aggfunc='sum',
+            fill_value=0
+        ).reset_index()
+        
+        # Calcula saldo líquido (RENDIMENTO - DESCONTO)
+        if 'RENDIMENTO' in pivot_semestral.columns and 'DESCONTO' in pivot_semestral.columns:
+            pivot_semestral['LIQUIDO'] = pivot_semestral['RENDIMENTO'] - pivot_semestral['DESCONTO']
+        
+        # Ordena por ano e semestre
+        pivot_semestral = pivot_semestral.sort_values(['Ano', 'Semestre'])
+        
+        # Formata valores
+        for col in ['RENDIMENTO', 'DESCONTO', 'LIQUIDO']:
+            if col in pivot_semestral.columns:
+                pivot_semestral[f'{col}_Formatado'] = pivot_semestral[col].apply(
+                    lambda x: f"{x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                )
+        
+        return pivot_semestral
+    
+    @staticmethod
+    def analisar_rubricas_por_semestre(df: pd.DataFrame, top_n: int = 10) -> Dict:
+        """
+        Analisa as principais rubricas por semestre
+        """
+        if df.empty:
+            return {}
+        
+        df_analise = df.copy()
+        
+        # Converte valores para numérico
+        extrator = ExtratorDemonstrativos()
+        df_analise['Valor_Numerico'] = df_analise['Valor'].apply(
+            lambda x: extrator.converter_valor_string(x) or 0
+        )
+        
+        # Extrai mês e ano
+        try:
+            df_analise['Mes'] = df_analise['Competencia'].apply(lambda x: int(x.split('/')[0]))
+            df_analise['Ano'] = df_analise['Competencia'].apply(lambda x: int(x.split('/')[1]))
+        except:
+            return {}
+        
+        # Determina semestre
+        df_analise['Semestre'] = df_analise['Mes'].apply(AnalisadorSemestral.calcular_semestre)
+        
+        # Análise de descontos por semestre
+        descontos_semestrais = {}
+        anos = sorted(df_analise['Ano'].unique())
+        
+        for ano in anos:
+            for semestre in [1, 2]:
+                df_semestre = df_analise[
+                    (df_analise['Ano'] == ano) & 
+                    (df_analise['Semestre'] == semestre) & 
+                    (df_analise['Tipo'] == 'DESCONTO')
+                ]
+                
+                if not df_semestre.empty:
+                    # Top descontos do semestre
+                    top_descontos = df_semestre.groupby('Discriminacao')['Valor_Numerico'].sum().nlargest(top_n)
+                    
+                    descontos_semestrais[f"{ano}-S{semestre}"] = {
+                        'total': df_semestre['Valor_Numerico'].sum(),
+                        'top_rubricas': top_descontos.to_dict(),
+                        'quantidade_rubricas': df_semestre['Discriminacao'].nunique()
+                    }
+        
+        # Análise de rendimentos por semestre
+        rendimentos_semestrais = {}
+        
+        for ano in anos:
+            for semestre in [1, 2]:
+                df_semestre = df_analise[
+                    (df_analise['Ano'] == ano) & 
+                    (df_analise['Semestre'] == semestre) & 
+                    (df_analise['Tipo'] == 'RENDIMENTO')
+                ]
+                
+                if not df_semestre.empty:
+                    # Top rendimentos do semestre
+                    top_rendimentos = df_semestre.groupby('Discriminacao')['Valor_Numerico'].sum().nlargest(top_n)
+                    
+                    rendimentos_semestrais[f"{ano}-S{semestre}"] = {
+                        'total': df_semestre['Valor_Numerico'].sum(),
+                        'top_rubricas': top_rendimentos.to_dict(),
+                        'quantidade_rubricas': df_semestre['Discriminacao'].nunique()
+                    }
+        
+        return {
+            'descontos_por_semestre': descontos_semestrais,
+            'rendimentos_por_semestre': rendimentos_semestrais,
+            'anos_analisados': anos
+        }
+
+# ============================================
+# MÓDULO 5: TEMPLATES DE RELATÓRIOS
 # ============================================
 
 class TemplateRelatorios:
@@ -493,7 +638,31 @@ class ExtratorDemonstrativos:
         
         if dados:
             df = pd.DataFrame(dados)
-            df = df.drop_duplicates()
+            
+            # CORREÇÃO: NÃO REMOVER DUPLICATAS - manter todas as linhas para preservar espelho fiel
+            # df = df.drop_duplicates()  # REMOVIDO PARA MANTER RUBRICAS REPETIDAS
+            
+            # Adicionar identificador para rubricas duplicadas (opcional, para melhor visualização)
+            df = df.reset_index(drop=True)
+            
+            # Contar ocorrências para debug (opcional)
+            contagens = df.groupby(['Discriminacao', 'Valor', 'Competencia', 'Pagina', 'Ano', 'Tipo']).size().reset_index(name='Contagem')
+            
+            if not contagens[contagens['Contagem'] > 1].empty:
+                # Se houver duplicatas, adicionar um identificador sequencial
+                df['Sequencia'] = df.groupby(['Discriminacao', 'Competencia', 'Tipo']).cumcount() + 1
+                df['Discriminacao_Original'] = df['Discriminacao']
+                
+                # Apenas para visualização: mostrar número da sequência se houver mais de 1
+                df['Discriminacao'] = df.apply(
+                    lambda row: f"{row['Discriminacao_Original']} #{row['Sequencia']}" 
+                    if contagens[(contagens['Discriminacao'] == row['Discriminacao_Original']) & 
+                                (contagens['Competencia'] == row['Competencia']) &
+                                (contagens['Tipo'] == row['Tipo'])]['Contagem'].iloc[0] > 1
+                    else row['Discriminacao_Original'],
+                    axis=1
+                )
+            
             if not df.empty:
                 df = df.sort_values(['Ano', 'Pagina', 'Tipo', 'Discriminacao'])
             return df
@@ -567,6 +736,8 @@ def inicializar_sessao():
         st.session_state.corretor = CorrecaoMonetaria()
     if 'analisador' not in st.session_state:
         st.session_state.analisador = AnalisadorComparativo()
+    if 'analisador_semestral' not in st.session_state:
+        st.session_state.analisador_semestral = AnalisadorSemestral()
     if 'template_manager' not in st.session_state:
         st.session_state.template_manager = TemplateRelatorios()
     if 'modo_avancado' not in st.session_state:
@@ -740,6 +911,12 @@ def main():
                                 st.session_state.df_filtrado = df_corrigido
                                 st.info(f"✅ Correção monetária aplicada ({st.session_state.indice_correcao})")
                             
+                            # Verifica se há rubricas duplicadas
+                            if 'Discriminacao_Original' in df.columns:
+                                duplicatas = df[df['Discriminacao'].str.contains('#')]
+                                if not duplicatas.empty:
+                                    st.info(f"✅ Encontradas {len(duplicatas)} rubricas duplicadas mantidas (marcadas com #)")
+                            
                             st.success(f"✅ {len(df)} registros extraídos!")
                             st.rerun()
                         else:
@@ -756,11 +933,12 @@ def main():
             else:
                 df = st.session_state.dados_extraidos
             
-            # Criar abas principais
-            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            # Criar abas principais - ADICIONADA ABA DE SEMESTRE
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
                 "📊 Dashboard", 
                 "🎯 Filtros", 
                 "📈 Análises", 
+                "📅 Semestral",
                 "📋 Relatórios",
                 "📥 Exportar"
             ])
@@ -775,9 +953,19 @@ def main():
                 with col2:
                     st.metric("Anos", df['Ano'].nunique())
                 with col3:
-                    st.metric("Rubricas", df['Discriminacao'].nunique())
+                    # Usar Discriminacao_Original se disponível para contagem precisa
+                    if 'Discriminacao_Original' in df.columns:
+                        st.metric("Rubricas Únicas", df['Discriminacao_Original'].nunique())
+                    else:
+                        st.metric("Rubricas", df['Discriminacao'].nunique())
                 with col4:
                     st.metric("Valor Total", formatar_valor_total(df))
+                
+                # Verificação de rubricas duplicadas
+                if 'Discriminacao_Original' in df.columns:
+                    duplicatas = df[df['Discriminacao'].str.contains('#')]
+                    if not duplicatas.empty:
+                        st.info(f"📝 **Nota:** {len(duplicatas)} rubricas duplicadas foram mantidas (marcadas com #)")
                 
                 # Dados principais
                 st.subheader("📋 Dados Extraídos")
@@ -929,6 +1117,117 @@ def main():
                     st.info("🔓 Ative o Modo Avançado na barra lateral para acessar estas análises.")
             
             with tab4:
+                # NOVA ABA: ANÁLISE SEMESTRAL
+                st.subheader("📅 Análise Semestral")
+                
+                if st.button("📊 Gerar Análise Semestral", type="primary", key="gerar_semestral"):
+                    with st.spinner("Analisando dados por semestre..."):
+                        # Análise consolidada por semestre
+                        analise_semestral = st.session_state.analisador_semestral.analisar_por_semestre(df)
+                        
+                        if not analise_semestral.empty:
+                            # Mostrar tabela consolidada
+                            st.write("### 📋 Consolidado por Semestre")
+                            
+                            # Preparar colunas para exibição
+                            colunas_exibicao = ['Semestre_Label']
+                            if 'RENDIMENTO_Formatado' in analise_semestral.columns:
+                                colunas_exibicao.append('RENDIMENTO_Formatado')
+                                analise_semestral = analise_semestral.rename(
+                                    columns={'RENDIMENTO_Formatado': 'RENDIMENTOS'}
+                                )
+                            
+                            if 'DESCONTO_Formatado' in analise_semestral.columns:
+                                colunas_exibicao.append('DESCONTO_Formatado')
+                                analise_semestral = analise_semestral.rename(
+                                    columns={'DESCONTO_Formatado': 'DESCONTOS'}
+                                )
+                            
+                            if 'LIQUIDO_Formatado' in analise_semestral.columns:
+                                colunas_exibicao.append('LIQUIDO_Formatado')
+                                analise_semestral = analise_semestral.rename(
+                                    columns={'LIQUIDO_Formatado': 'LÍQUIDO'}
+                                )
+                            
+                            st.dataframe(
+                                analise_semestral[colunas_exibicao],
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                            
+                            # Gráfico de barras para evolução semestral
+                            if 'RENDIMENTO' in analise_semestral.columns and 'DESCONTO' in analise_semestral.columns:
+                                fig = go.Figure()
+                                
+                                fig.add_trace(go.Bar(
+                                    x=analise_semestral['Semestre_Label'],
+                                    y=analise_semestral['RENDIMENTO'],
+                                    name='Rendimentos',
+                                    marker_color='#2ecc71'
+                                ))
+                                
+                                fig.add_trace(go.Bar(
+                                    x=analise_semestral['Semestre_Label'],
+                                    y=analise_semestral['DESCONTO'],
+                                    name='Descontos',
+                                    marker_color='#e74c3c'
+                                ))
+                                
+                                if 'LIQUIDO' in analise_semestral.columns:
+                                    fig.add_trace(go.Scatter(
+                                        x=analise_semestral['Semestre_Label'],
+                                        y=analise_semestral['LIQUIDO'],
+                                        name='Líquido',
+                                        mode='lines+markers',
+                                        line=dict(color='#3498db', width=3),
+                                        marker=dict(size=8)
+                                    ))
+                                
+                                fig.update_layout(
+                                    title='Evolução Semestral',
+                                    xaxis_title='Semestre',
+                                    yaxis_title='Valor (R$)',
+                                    barmode='group',
+                                    height=500
+                                )
+                                
+                                st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Análise detalhada por rubrica
+                            st.write("### 🔍 Top Rubricas por Semestre")
+                            
+                            analise_detalhada = st.session_state.analisador_semestral.analisar_rubricas_por_semestre(df, top_n=5)
+                            
+                            if analise_detalhada:
+                                anos = analise_detalhada.get('anos_analisados', [])
+                                
+                                for ano in anos:
+                                    for semestre in [1, 2]:
+                                        chave = f"{ano}-S{semestre}"
+                                        
+                                        if chave in analise_detalhada['descontos_por_semestre']:
+                                            st.write(f"#### 📊 {ano} - {semestre}º Semestre")
+                                            
+                                            col_s1, col_s2 = st.columns(2)
+                                            
+                                            with col_s1:
+                                                st.write("**💰 Top Descontos:**")
+                                                descontos = analise_detalhada['descontos_por_semestre'][chente]['top_rubricas']
+                                                for rubrica, valor in descontos.items():
+                                                    st.write(f"- {rubrica}: R$ {formatar_valor_brasileiro(valor)}")
+                                            
+                                            with col_s2:
+                                                st.write("**💵 Top Rendimentos:**")
+                                                if chave in analise_detalhada['rendimentos_por_semestre']:
+                                                    rendimentos = analise_detalhada['rendimentos_por_semestre'][chave]['top_rubricas']
+                                                    for rubrica, valor in rendimentos.items():
+                                                        st.write(f"- {rubrica}: R$ {formatar_valor_brasileiro(valor)}")
+                                            
+                                            st.divider()
+                        else:
+                            st.warning("Não foi possível gerar análise semestral. Verifique os dados extraídos.")
+            
+            with tab5:
                 st.subheader("📋 Relatórios Personalizados")
                 
                 if st.session_state.modo_avancado:
@@ -977,7 +1276,7 @@ def main():
                 else:
                     st.info("🔓 Ative o Modo Avançado para acessar templates de relatórios.")
             
-            with tab5:
+            with tab6:
                 st.subheader("📥 Exportação de Dados")
                 
                 # Opções de exportação
@@ -1017,6 +1316,11 @@ def main():
                                             'Percentual': list(composicao['percentuais'].values())
                                         })
                                         df_comp.to_excel(writer, index=False, sheet_name=f"Comp_{ano}")
+                            
+                            # Análise semestral (nova funcionalidade)
+                            analise_semestral = st.session_state.analisador_semestral.analisar_por_semestre(df)
+                            if not analise_semestral.empty:
+                                analise_semestral.to_excel(writer, index=False, sheet_name='Análise_Semestral')
                         
                         buffer.seek(0)
                         st.download_button(
@@ -1044,14 +1348,27 @@ def main():
             1. **⭐ Rubricas Favoritas** - Salve suas rubricas mais usadas
             2. **💰 Correção Monetária** - Corrija valores com IPCA, INPC, IGPM, SELIC
             3. **📊 Análise Comparativa** - Compare evolução ano a ano
-            4. **📋 Templates de Relatórios** - Relatórios pré-formatados
+            4. **📅 Análise Semestral** - Consolidação por semestre (1º: Jan-Jun, 2º: Jul-Dez)
+            5. **📋 Templates de Relatórios** - Relatórios pré-formatados
+            
+            ### 📅 **NOVA ABA SEMESTRAL:**
+            - **Consolidação automática** por semestre
+            - **Gráfico de evolução** semestral
+            - **Top rubricas** por semestre
+            - **Exportação** incluindo análise semestral
+            
+            ### 🔧 **CORREÇÃO IMPORTANTE:**
+            - **Rubricas duplicadas são mantidas** - Valores idênticos que aparecem múltiplas vezes no demonstrativo
+            - **Espelho fiel** - Todas as rubricas são extraídas, mesmo que tenham valores repetidos
+            - **Identificação clara** - Rubricas duplicadas são marcadas com #1, #2 para fácil identificação
             
             ### 🔧 **Como usar:**
             1. Ative o **Modo Avançado** na barra lateral
             2. Configure seus índices preferidos
             3. Selecione templates de relatórios
             4. Filtre por rubricas favoritas
-            5. Exporte com análises incluídas
+            5. Explore a nova aba **Semestral**
+            6. Exporte com análises incluídas
             """)
 
 if __name__ == "__main__":
