@@ -327,29 +327,32 @@ class AnalisadorSemestral:
         semestral_tipo = df_analise.groupby(['Ano', 'Semestre', 'Semestre_Label', 'Tipo'])['Valor_Numerico'].sum().reset_index()
         
         # Pivot para ter tipos como colunas
-        pivot_semestral = semestral_tipo.pivot_table(
-            values='Valor_Numerico',
-            index=['Ano', 'Semestre', 'Semestre_Label'],
-            columns='Tipo',
-            aggfunc='sum',
-            fill_value=0
-        ).reset_index()
-        
-        # Calcula saldo líquido (RENDIMENTO - DESCONTO)
-        if 'RENDIMENTO' in pivot_semestral.columns and 'DESCONTO' in pivot_semestral.columns:
-            pivot_semestral['LIQUIDO'] = pivot_semestral['RENDIMENTO'] - pivot_semestral['DESCONTO']
-        
-        # Ordena por ano e semestre
-        pivot_semestral = pivot_semestral.sort_values(['Ano', 'Semestre'])
-        
-        # Formata valores
-        for col in ['RENDIMENTO', 'DESCONTO', 'LIQUIDO']:
-            if col in pivot_semestral.columns:
-                pivot_semestral[f'{col}_Formatado'] = pivot_semestral[col].apply(
-                    lambda x: f"{x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-                )
-        
-        return pivot_semestral
+        if not semestral_tipo.empty:
+            pivot_semestral = semestral_tipo.pivot_table(
+                values='Valor_Numerico',
+                index=['Ano', 'Semestre', 'Semestre_Label'],
+                columns='Tipo',
+                aggfunc='sum',
+                fill_value=0
+            ).reset_index()
+            
+            # Calcula saldo líquido (RENDIMENTO - DESCONTO) se ambas colunas existirem
+            if 'RENDIMENTO' in pivot_semestral.columns and 'DESCONTO' in pivot_semestral.columns:
+                pivot_semestral['LIQUIDO'] = pivot_semestral['RENDIMENTO'] - pivot_semestral['DESCONTO']
+            
+            # Ordena por ano e semestre
+            pivot_semestral = pivot_semestral.sort_values(['Ano', 'Semestre'])
+            
+            # Formata valores para colunas existentes
+            for col in ['RENDIMENTO', 'DESCONTO', 'LIQUIDO']:
+                if col in pivot_semestral.columns:
+                    pivot_semestral[f'{col}_Formatado'] = pivot_semestral[col].apply(
+                        lambda x: f"{x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                    )
+            
+            return pivot_semestral
+        else:
+            return pd.DataFrame()
     
     @staticmethod
     def analisar_rubricas_por_semestre(df: pd.DataFrame, top_n: int = 10) -> Dict:
@@ -1129,33 +1132,35 @@ def main():
                             # Mostrar tabela consolidada
                             st.write("### 📋 Consolidado por Semestre")
                             
-                            # Preparar colunas para exibição
+                            # CORREÇÃO: Verificar quais colunas realmente existem
                             colunas_exibicao = ['Semestre_Label']
+                            mapeamento_colunas = {}
+                            
                             if 'RENDIMENTO_Formatado' in analise_semestral.columns:
                                 colunas_exibicao.append('RENDIMENTO_Formatado')
-                                analise_semestral = analise_semestral.rename(
-                                    columns={'RENDIMENTO_Formatado': 'RENDIMENTOS'}
-                                )
+                                mapeamento_colunas['RENDIMENTO_Formatado'] = 'RENDIMENTOS'
                             
                             if 'DESCONTO_Formatado' in analise_semestral.columns:
                                 colunas_exibicao.append('DESCONTO_Formatado')
-                                analise_semestral = analise_semestral.rename(
-                                    columns={'DESCONTO_Formatado': 'DESCONTOS'}
-                                )
+                                mapeamento_colunas['DESCONTO_Formatado'] = 'DESCONTOS'
                             
                             if 'LIQUIDO_Formatado' in analise_semestral.columns:
                                 colunas_exibicao.append('LIQUIDO_Formatado')
-                                analise_semestral = analise_semestral.rename(
-                                    columns={'LIQUIDO_Formatado': 'LÍQUIDO'}
-                                )
+                                mapeamento_colunas['LIQUIDO_Formatado'] = 'LÍQUIDO'
+                            
+                            # Criar DataFrame para exibição
+                            df_exibicao = analise_semestral[colunas_exibicao].copy()
+                            
+                            # Renomear colunas
+                            df_exibicao = df_exibicao.rename(columns=mapeamento_colunas)
                             
                             st.dataframe(
-                                analise_semestral[colunas_exibicao],
+                                df_exibicao,
                                 use_container_width=True,
                                 hide_index=True
                             )
                             
-                            # Gráfico de barras para evolução semestral
+                            # CORREÇÃO: Verificar se temos dados numéricos para gráficos
                             if 'RENDIMENTO' in analise_semestral.columns and 'DESCONTO' in analise_semestral.columns:
                                 fig = go.Figure()
                                 
@@ -1192,40 +1197,55 @@ def main():
                                 )
                                 
                                 st.plotly_chart(fig, use_container_width=True)
+                            else:
+                                st.info("⚠️ Não há dados suficientes para gerar o gráfico de evolução semestral.")
                             
                             # Análise detalhada por rubrica
                             st.write("### 🔍 Top Rubricas por Semestre")
                             
                             analise_detalhada = st.session_state.analisador_semestral.analisar_rubricas_por_semestre(df, top_n=5)
                             
-                            if analise_detalhada:
+                            if analise_detalhada and 'anos_analisados' in analise_detalhada:
                                 anos = analise_detalhada.get('anos_analisados', [])
                                 
                                 for ano in anos:
                                     for semestre in [1, 2]:
                                         chave = f"{ano}-S{semestre}"
                                         
-                                        if chave in analise_detalhada['descontos_por_semestre']:
+                                        # CORREÇÃO: Verificar se a chave existe em ambos os dicionários
+                                        tem_descontos = chave in analise_detalhada.get('descontos_por_semestre', {})
+                                        tem_rendimentos = chave in analise_detalhada.get('rendimentos_por_semestre', {})
+                                        
+                                        if tem_descontos or tem_rendimentos:
                                             st.write(f"#### 📊 {ano} - {semestre}º Semestre")
                                             
                                             col_s1, col_s2 = st.columns(2)
                                             
                                             with col_s1:
-                                                st.write("**💰 Top Descontos:**")
-                                                descontos = analise_detalhada['descontos_por_semestre'][chente]['top_rubricas']
-                                                for rubrica, valor in descontos.items():
-                                                    st.write(f"- {rubrica}: R$ {formatar_valor_brasileiro(valor)}")
+                                                if tem_descontos:
+                                                    st.write("**💰 Top Descontos:**")
+                                                    descontos = analise_detalhada['descontos_por_semestre'][chave]['top_rubricas']
+                                                    for rubrica, valor in descontos.items():
+                                                        st.write(f"- {rubrica}: R$ {formatar_valor_brasileiro(valor)}")
+                                                else:
+                                                    st.write("**💰 Top Descontos:**")
+                                                    st.write("*Sem dados de descontos*")
                                             
                                             with col_s2:
-                                                st.write("**💵 Top Rendimentos:**")
-                                                if chave in analise_detalhada['rendimentos_por_semestre']:
+                                                if tem_rendimentos:
+                                                    st.write("**💵 Top Rendimentos:**")
                                                     rendimentos = analise_detalhada['rendimentos_por_semestre'][chave]['top_rubricas']
                                                     for rubrica, valor in rendimentos.items():
                                                         st.write(f"- {rubrica}: R$ {formatar_valor_brasileiro(valor)}")
+                                                else:
+                                                    st.write("**💵 Top Rendimentos:**")
+                                                    st.write("*Sem dados de rendimentos*")
                                             
                                             st.divider()
+                            else:
+                                st.warning("Não foi possível gerar análise detalhada por semestre.")
                         else:
-                            st.warning("Não foi possível gerar análise semestral. Verifique os dados extraídos.")
+                            st.warning("Não foi possível gerar análise semestral. Verifique se há dados para os meses necessários.")
             
             with tab5:
                 st.subheader("📋 Relatórios Personalizados")
