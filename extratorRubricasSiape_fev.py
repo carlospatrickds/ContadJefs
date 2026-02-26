@@ -194,7 +194,7 @@ with abas[0]:
             col1.markdown(f"""
             <div>
                 <span style="font-size:13px; color:gray;">Nome</span><br>
-                <span style="font-size:15px; font-weight:600;">
+                <span style="font-size:18px; font-weight:600;">
                     {metadados.get("Nome","")}
                 </span>
             </div>
