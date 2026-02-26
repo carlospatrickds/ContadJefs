@@ -98,7 +98,7 @@ class FichaFinanceiraParser:
                 self.dados.append({
                     "Discriminacao": descricao,
                     "Valor": valor_float,
-                    "Competencia": competencia,  # datetime real
+                    "Competencia": competencia,
                     "Pagina": pagina,
                     "Ano": self.ano_atual,
                     "Tipo": self.tipo_atual
@@ -169,7 +169,6 @@ def gerar_excel(df_filtrado, metadados):
 abas = st.tabs(["📄 Extração", "📊 Análise", "ℹ️ Sobre o App"])
 
 df_global = None
-metadados_global = None
 
 
 # ===== ABA EXTRAÇÃO =====
@@ -184,26 +183,44 @@ with abas[0]:
 
         parser = FichaFinanceiraParser(arquivo)
         df, metadados = parser.executar()
-
         df_global = df
-        metadados_global = metadados
 
-        if not metadados:
-            st.warning("Metadados não encontrados.")
-        else:
+        if metadados:
+
             st.subheader("Relatório do Servidor")
 
             col1, col2, col3 = st.columns(3)
 
-            col1.metric("Nome", metadados.get("Nome",""))
-            col2.metric("CPF", metadados.get("CPF",""))
-            col3.metric("Cargo", metadados.get("Cargo",""))
+            col1.markdown(f"""
+            <div>
+                <span style="font-size:13px; color:gray;">Nome</span><br>
+                <span style="font-size:15px; font-weight:600;">
+                    {metadados.get("Nome","")}
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            col2.markdown(f"""
+            <div>
+                <span style="font-size:13px; color:gray;">CPF</span><br>
+                <span style="font-size:15px; font-weight:600;">
+                    {metadados.get("CPF","")}
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            col3.markdown(f"""
+            <div>
+                <span style="font-size:13px; color:gray;">Cargo</span><br>
+                <span style="font-size:15px; font-weight:600;">
+                    {metadados.get("Cargo","")}
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
 
         st.divider()
 
-        if df.empty:
-            st.warning("Nenhum dado encontrado.")
-        else:
+        if not df.empty:
 
             rubricas = sorted(df["Discriminacao"].unique())
 
@@ -287,5 +304,5 @@ with abas[2]:
     - Exportação estruturada para Excel com datas reais
     - Análise gráfica interativa
 
-    Desenvolvido para auditoria administrativa e apoio em cálculos judiciais.
+    Indicado para auditoria administrativa e apoio em cálculos judiciais.
     """)
