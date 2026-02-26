@@ -1,13 +1,3 @@
-import streamlit as st
-import pdfplumber
-import pandas as pd
-import re
-
-
-# =====================================================
-# EXTRATOR SIAPE
-# =====================================================
-
 class ExtratorDemonstrativos:
 
     def __init__(self):
@@ -17,8 +7,6 @@ class ExtratorDemonstrativos:
             "JUL","AGO","SET","OUT","NOV","DEZ"
         ]
 
-
-    # -------------------------------------------------
 
     def converter_valor(self, valor):
 
@@ -30,14 +18,9 @@ class ExtratorDemonstrativos:
             return None
 
 
-    # -------------------------------------------------
-
     def extrair_ano(self, texto):
 
-        m = re.search(
-            r'ANO REFER[ÊE]NCIA.*?(\d{4})',
-            texto
-        )
+        m = re.search(r'ANO REFER[ÊE]NCIA.*?(\d{4})', texto)
 
         if m:
             return m.group(1)
@@ -45,29 +28,23 @@ class ExtratorDemonstrativos:
         return None
 
 
-    # -------------------------------------------------
-
     def detectar_meses(self, linha):
 
-        linha = linha.upper()
-
-        meses_encontrados = []
+        encontrados = []
 
         for m in self.meses:
 
-            if m in linha:
-                meses_encontrados.append(m)
+            if m in linha.upper():
+                encontrados.append(m)
 
-        return meses_encontrados
+        return encontrados
 
 
-    # -------------------------------------------------
-
-    def linha_valida(self, linha):
+    def linha_e_total(self, linha):
 
         linha = linha.upper()
 
-        ignorar = [
+        termos = [
             "TOTAL",
             "BRUTO",
             "LIQUIDO",
@@ -76,19 +53,42 @@ class ExtratorDemonstrativos:
             "EMITIDO"
         ]
 
-        for termo in ignorar:
+        for t in termos:
+            if t in linha:
+                return True
 
-            if termo in linha:
-                return False
-
-        return True
+        return False
 
 
-    # -------------------------------------------------
+    def extrair_valores(self, linha):
+
+        return re.findall(
+            r'\d{1,3}(?:\.\d{3})*,\d{2}',
+            linha
+        )
+
+
+    def extrair_discriminacao(self, linha):
+
+        partes = re.split(
+            r'\d{1,3}(?:\.\d{3})*,\d{2}',
+            linha
+        )
+
+        if partes:
+            return partes[0].strip()
+
+        return ""
+
 
     def processar_pdf(self, pdf_file):
 
         dados = []
+
+        meses_atuais = []
+        secao_atual = None
+        ano_atual = None
+
 
         with pdfplumber.open(pdf_file) as pdf:
 
@@ -100,20 +100,15 @@ class ExtratorDemonstrativos:
                     continue
 
 
-                if "DEMONSTRATIVO" not in texto.upper():
-                    continue
+                linhas = texto.split("\n")
 
+
+                # detectar ano uma vez por página
 
                 ano = self.extrair_ano(texto)
 
-                if not ano:
-                    continue
-
-
-                linhas = texto.split("\n")
-
-                meses = []
-                secao = None
+                if ano:
+                    ano_atual = ano
 
 
                 for linha in linhas:
@@ -127,22 +122,29 @@ class ExtratorDemonstrativos:
                     linha_upper = linha.upper()
 
 
-                    # ----------------------------
-                    # detectar cabeçalho meses
+                    # ---------------------
+                    # detectar meses
 
-                    if "TIPO DISCRIMIN" in linha_upper:
+                    if "TIPO DISCRIMINA" in linha_upper:
 
-                        meses = self.detectar_meses(linha)
+                        meses_atuais = self.detectar_meses(linha)
 
                         continue
 
 
-                    # ----------------------------
+                    # ignorar linha SEMESTRE
+
+                    if "SEMESTRE" in linha_upper:
+
+                        continue
+
+
+                    # ---------------------
                     # detectar seção
 
                     if linha_upper.startswith("RENDIMENTOS"):
 
-                        secao = "RENDIMENTO"
+                        secao_atual = "RENDIMENTO"
 
                         linha = linha.replace(
                             "RENDIMENTOS",
@@ -152,7 +154,7 @@ class ExtratorDemonstrativos:
 
                     elif linha_upper.startswith("DESCONTOS"):
 
-                        secao = "DESCONTO"
+                        secao_atual = "DESCONTO"
 
                         linha = linha.replace(
                             "DESCONTOS",
@@ -160,48 +162,37 @@ class ExtratorDemonstrativos:
                         ).strip()
 
 
-                    if not meses:
+                    # ---------------------
+
+                    if not meses_atuais:
                         continue
 
 
-                    if not secao:
+                    if not secao_atual:
                         continue
 
 
-                    if not self.linha_valida(linha):
+                    if not ano_atual:
                         continue
 
 
-                    # ----------------------------
-                    # valores monetários
-
-                    valores = re.findall(
-                        r'\d{1,3}(?:\.\d{3})*,\d{2}',
-                        linha
-                    )
-
-
-                    if len(valores) < len(meses):
+                    if self.linha_e_total(linha):
                         continue
 
 
-                    # ----------------------------
-                    # discriminação
+                    valores = self.extrair_valores(linha)
 
-                    discrim = re.split(
-                        r'\d{1,3}(?:\.\d{3})*,\d{2}',
-                        linha
-                    )[0].strip()
+                    if len(valores) < len(meses_atuais):
+                        continue
 
+
+                    discrim = self.extrair_discriminacao(linha)
 
                     if len(discrim) < 3:
                         continue
 
 
-                    # ----------------------------
-                    # salvar
-
-                    for i, mes in enumerate(meses):
+                    for i, mes in enumerate(meses_atuais):
 
                         valor = valores[i]
 
@@ -209,11 +200,12 @@ class ExtratorDemonstrativos:
                             continue
 
 
-                        competencia = f"{i+1:02d}/{ano}"
+                        competencia = f"{i+1:02d}/{ano_atual}"
+
 
                         dados.append({
 
-                            "Ano":ano,
+                            "Ano":ano_atual,
 
                             "Competencia":competencia,
 
@@ -226,66 +218,11 @@ class ExtratorDemonstrativos:
                             "Valor_float":
                                 self.converter_valor(valor),
 
-                            "Tipo":secao
+                            "Tipo":secao_atual
 
                         })
 
 
         df = pd.DataFrame(dados)
 
-        if not df.empty:
-
-            df = df.sort_values(
-                ["Ano","Competencia","Tipo"]
-            )
-
-
         return df
-
-
-
-# =====================================================
-# STREAMLIT
-# =====================================================
-
-st.title("Buscador de Rubricas - Ficha Financeira SIAPE")
-
-
-pdf_file = st.file_uploader(
-    "Envie a ficha financeira PDF",
-    type="pdf"
-)
-
-
-if pdf_file:
-
-    extrator = ExtratorDemonstrativos()
-
-    with st.spinner("Processando ficha..."):
-
-        df = extrator.processar_pdf(pdf_file)
-
-
-    if df.empty:
-
-        st.error("Nenhum dado encontrado.")
-
-    else:
-
-        st.success("Extração concluída")
-
-
-        st.dataframe(df, use_container_width=True)
-
-
-        csv = df.to_csv(
-            index=False
-        ).encode("utf-8")
-
-
-        st.download_button(
-            "Baixar CSV",
-            csv,
-            "rubricas.csv",
-            "text/csv"
-        )
