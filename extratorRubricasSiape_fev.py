@@ -3,7 +3,8 @@ import pdfplumber
 import pandas as pd
 import re
 from datetime import datetime
-from io import BytesIOimport streamlit as st
+from io import BytesIO
+import streamlit as st
 import pdfplumber
 import pandas as pd
 import re
