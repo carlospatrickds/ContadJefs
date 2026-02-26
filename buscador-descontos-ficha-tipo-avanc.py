@@ -600,231 +600,151 @@ class ExtratorDemonstrativos:
         
         return meses_colunas
     
-    def processar_pdf(self, pdf_file, extrair_proventos: bool = True, extrair_descontos: bool = True) -> pd.DataFrame:
-        """Processa o PDF e extrai dados - CORRIGIDO PARA MULTIPLAS OCORRÊNCIAS"""
-        
-        dados = []
-        
-        with pdfplumber.open(pdf_file) as pdf:
-            for pagina_num, pagina in enumerate(pdf.pages, 1):
-                texto = pagina.extract_text()
-                
-                if not texto or 'DEMONSTRATIVO' not in texto.upper():
-                    continue
-                
-                ano = self.extrair_ano_referencia_robusto(texto, pagina_num)
-                if not ano:
-                    continue
-                
-                tabelas = pagina.extract_tables()
-                
-                if not tabelas:
-                    continue
-                
-                for tabela in tabelas:
-                    if not tabela or len(tabela) < 3:
-                        continue
-                    
-                    # CORREÇÃO: Identificar colunas de meses de forma mais robusta
-                    meses_colunas = self.identificar_colunas_meses(tabela)
-                    
-                    if not meses_colunas:
-                        # Tentar método alternativo de identificação
-                        meses_colunas = self.identificar_colunas_meses_alternativo(tabela)
-                    
-                    if not meses_colunas:
-                        continue
-                    
-                    inicio_rendimentos = None
-                    inicio_descontos = None
-                    
-                    for linha_idx, linha in enumerate(tabela):
-                        if not linha:
-                            continue
-                        
-                        linha_str = ' '.join([str(cell) for cell in linha if cell])
-                        
-                        if 'RENDIMENTOS' in linha_str.upper() and inicio_rendimentos is None:
-                            inicio_rendimentos = linha_idx
-                        elif 'DESCONTOS' in linha_str.upper() and inicio_descontos is None:
-                            inicio_descontos = linha_idx
-                    
-                    if extrair_proventos and inicio_rendimentos is not None:
-                        dados.extend(
-                            self.processar_secao_tabela_corrigido(
-                                tabela, inicio_rendimentos, inicio_descontos,
-                                meses_colunas, ano, pagina_num, 'RENDIMENTO'
-                            )
-                        )
-                    
-                    if extrair_descontos and inicio_descontos is not None:
-                        fim_descontos = len(tabela)
-                        for linha_idx in range(inicio_descontos + 1, len(tabela)):
-                            linha_str = ' '.join([str(cell) for cell in tabela[linha_idx] if cell])
-                            if 'TOTAL' in linha_str.upper() or 'RENDIMENTOS' in linha_str.upper():
-                                fim_descontos = linha_idx
-                                break
-                        
-                        dados.extend(
-                            self.processar_secao_tabela_corrigido(
-                                tabela, inicio_descontos, fim_descontos,
-                                meses_colunas, ano, pagina_num, 'DESCONTO'
-                            )
-                        )
-        
-        if dados:
-            df = pd.DataFrame(dados)
-            
-            # CORREÇÃO CRÍTICA: NÃO REMOVER DUPLICATAS - manter TODAS as ocorrências
-            # Mas precisamos garantir que não estamos duplicando erradamente
-            # Primeiro, remover entradas com valor 0
-            df = df[df['Valor'] != '0,00']
-            
-            # Criar um identificador único baseado em múltiplos campos
-            df['ID_Completo'] = df.apply(
-                lambda row: f"{row['Discriminacao']}_{row['Competencia']}_{row['Coluna_Discriminacao']}_{row['Coluna_Valor']}_{row['Pagina']}",
-                axis=1
-            )
-            
-            # Remover apenas duplicatas exatas do mesmo ID
-            df = df.drop_duplicates(subset=['ID_Completo'], keep='first')
-            
-            # Adicionar sequência para rubricas com mesmo nome na mesma competência
-            df['Sequencia'] = df.groupby(['Discriminacao', 'Competencia', 'Tipo']).cumcount() + 1
-            
-            # Para rubricas com múltiplas ocorrências, adicionar número de sequência
-            df['Discriminacao_Original'] = df['Discriminacao']
-            
-            # Contar quantas vezes cada rubrica aparece na mesma competência
-            contagens = df.groupby(['Discriminacao_Original', 'Competencia', 'Tipo']).size().reset_index(name='Contagem')
-            
-            # Aplicar numeração sequencial apenas para rubricas com múltiplas ocorrências
-            df = df.merge(contagens, on=['Discriminacao_Original', 'Competencia', 'Tipo'], how='left')
-            
-            df['Discriminacao_Final'] = df.apply(
-                lambda row: f"{row['Discriminacao_Original']} #{row['Sequencia']}" 
-                if row['Contagem'] > 1
-                else row['Discriminacao_Original'],
-                axis=1
-            )
-            
-            # Atualizar a coluna Discriminacao
-            df['Discriminacao'] = df['Discriminacao_Final']
-            
-            if not df.empty:
-                df = df.sort_values(['Ano', 'Pagina', 'Tipo', 'Discriminacao', 'Competencia'])
-                # Manter apenas colunas essenciais
-                colunas_finais = ['Discriminacao', 'Valor', 'Competencia', 'Pagina', 'Ano', 'Tipo']
-                df = df[colunas_finais]
-            return df
-        else:
-            return pd.DataFrame(columns=['Discriminacao', 'Valor', 'Competencia', 'Pagina', 'Ano', 'Tipo'])
-    
-    def processar_secao_tabela_corrigido(self, tabela, inicio_secao, fim_secao, meses_colunas, ano, pagina_num, tipo):
-        """Processa uma seção da tabela CORRIGIDO para múltiplas ocorrências"""
-        dados_secao = []
-        
-        # Primeiro, identificar todas as linhas que contêm discriminacoes
-        linhas_discriminacoes = []
-        
-        for linha_idx in range(inicio_secao + 1, fim_secao):
-            linha = tabela[linha_idx]
-            
-            if not linha or not any(linha):
+def processar_pdf(self, pdf_file, extrair_proventos: bool = True, extrair_descontos: bool = True) -> pd.DataFrame:
+    dados = []
+    meses_ordenados = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"]
+    mes_para_numero = self.meses_map  # já definido na classe
+
+    with pdfplumber.open(pdf_file) as pdf:
+        ultimo_semestre = None
+        secao_atual = None
+
+        for pagina_num, pagina in enumerate(pdf.pages, 1):
+            texto = pagina.extract_text()
+            if not texto or 'DEMONSTRATIVO' not in texto.upper():
                 continue
-            
-            linha_str = ' '.join([str(cell) for cell in linha if cell])
-            if 'RENDIMENTOS' in linha_str.upper() or 'DESCONTOS' in linha_str.upper() or 'TOTAL' in linha_str.upper():
-                break
-            
-            # Verificar se esta linha tem algum valor numérico nas colunas de meses
-            tem_valores = False
-            for col_idx in meses_colunas.keys():
-                if col_idx < len(linha) and linha[col_idx]:
-                    valor_str = str(linha[col_idx]).strip()
-                    if re.match(r'^[\d\.,]+\s*$', valor_str) and valor_str not in ['', '0', '0,00']:
-                        tem_valores = True
-                        break
-            
-            if tem_valores:
-                linhas_discriminacoes.append((linha_idx, linha))
-        
-        # Processar cada linha que tem valores
-        for linha_idx, linha in linhas_discriminacoes:
-            # Encontrar TODAS as discriminacoes nesta linha
-            discriminacoes = []
-            
-            for cell_idx, cell in enumerate(linha):
-                if cell and cell.strip():
-                    cell_str = str(cell).strip()
-                    # É uma discriminacao se não for numérico e não for mês
-                    if (not re.match(r'^[\d\.,]+\s*$', cell_str) and 
-                        cell_idx not in meses_colunas and
-                        not any(mes in cell_str.upper() for mes in self.meses_map.keys()) and
-                        cell_str.upper() not in ['RENDIMENTOS', 'DESCONTOS', 'TOTAL', '']):
-                        
-                        discriminacoes.append({
-                            'texto': cell_str,
-                            'coluna': cell_idx
-                        })
-            
-            # Se não encontrou discriminacoes nesta linha, procurar na linha anterior
-            if not discriminacoes and linha_idx > 0:
-                linha_anterior = tabela[linha_idx - 1]
-                for cell_idx, cell in enumerate(linha_anterior):
-                    if cell and cell.strip():
-                        cell_str = str(cell).strip()
-                        if (not re.match(r'^[\d\.,]+\s*$', cell_str) and 
-                            cell_idx not in meses_colunas and
-                            not any(mes in cell_str.upper() for mes in self.meses_map.keys()) and
-                            cell_str.upper() not in ['RENDIMENTOS', 'DESCONTOS', 'TOTAL', '']):
-                            
-                            discriminacoes.append({
-                                'texto': cell_str,
-                                'coluna': cell_idx
-                            })
-            
-            # Para cada discriminacao encontrada, extrair valores
-            for discriminacao_info in discriminacoes:
-                discriminacao = discriminacao_info['texto']
-                
-                # Para cada coluna de mês, extrair o valor
-                for col_idx, mes_num in meses_colunas.items():
-                    if col_idx < len(linha) and linha[col_idx]:
-                        valor_str = str(linha[col_idx]).strip()
-                        
-                        if re.match(r'^[\d\.,]+\s*$', valor_str) and valor_str:
-                            valor_float = self.converter_valor_string(valor_str)
-                            
-                            if valor_float is not None and valor_float != 0:
-                                valor_formatado = self.formatar_valor_brasileiro(valor_float)
-                                competencia = f"{mes_num:02d}/{ano}"
-                                
-                                # Verificar se já existe esta combinação
-                                existe = False
-                                for dado in dados_secao:
-                                    if (dado['Discriminacao'] == discriminacao and 
-                                        dado['Competencia'] == competencia and 
-                                        dado['Valor'] == valor_formatado and
-                                        dado['Tipo'] == tipo and
-                                        dado['Coluna_Discriminacao'] == discriminacao_info['coluna'] and
-                                        dado['Coluna_Valor'] == col_idx):
-                                        existe = True
-                                        break
-                                
-                                if not existe:
-                                    dados_secao.append({
-                                        'Discriminacao': discriminacao,
-                                        'Valor': valor_formatado,
-                                        'Competencia': competencia,
-                                        'Pagina': pagina_num,
-                                        'Ano': ano,
-                                        'Tipo': tipo,
-                                        'Coluna_Discriminacao': discriminacao_info['coluna'],
-                                        'Coluna_Valor': col_idx
-                                    })
-        
-        return dados_secao
+
+            ano = self.extrair_ano_referencia_robusto(texto, pagina_num)
+            if not ano:
+                continue
+
+            linhas = texto.split('\n')
+            cabecalho_idx = None
+            meses_pagina = []
+
+            # Procurar linha de cabeçalho com meses
+            for i, linha in enumerate(linhas):
+                linha_upper = linha.upper()
+                # Verifica se contém pelo menos três abreviações de mês
+                count_meses = sum(1 for m in meses_ordenados if m in linha_upper)
+                if count_meses >= 3 or "TIPODISCRIMINAÇÃO" in linha_upper:
+                    cabecalho_idx = i
+                    # Determinar quais meses estão presentes (primeiro ou segundo semestre)
+                    if "JAN" in linha_upper:
+                        meses_pagina = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN"]
+                    elif "JUL" in linha_upper:
+                        meses_pagina = ["JUL", "AGO", "SET", "OUT", "NOV", "DEZ"]
+                    else:
+                        # Fallback: extrair na ordem de aparecimento
+                        encontrados = []
+                        pos = 0
+                        while pos < len(linha_upper):
+                            match = None
+                            for m in meses_ordenados:
+                                if linha_upper.startswith(m, pos):
+                                    encontrados.append(m)
+                                    pos += len(m)
+                                    match = m
+                                    break
+                            if not match:
+                                pos += 1
+                        meses_pagina = encontrados[:6]  # pegar os 6 primeiros encontrados
+                    break
+
+            if cabecalho_idx is None or not meses_pagina:
+                continue  # página sem cabeçalho identificável
+
+            # Se o semestre mudou, reinicia a seção atual
+            if meses_pagina != ultimo_semestre:
+                secao_atual = None
+                ultimo_semestre = meses_pagina
+
+            # Processar linhas após o cabeçalho
+            for linha in linhas[cabecalho_idx+1:]:
+                linha = linha.strip()
+                if not linha:
+                    continue
+
+                linha_upper = linha.upper()
+
+                # Detectar início de seção
+                if linha_upper.startswith("RENDIMENTOS"):
+                    if extrair_proventos:
+                        secao_atual = "RENDIMENTO"
+                        resto = linha[len("RENDIMENTOS"):].strip()
+                        if resto:
+                            self._processar_linha_rubrica(resto, secao_atual, meses_pagina, ano, pagina_num, dados)
+                elif linha_upper.startswith("DESCONTOS"):
+                    if extrair_descontos:
+                        secao_atual = "DESCONTO"
+                        resto = linha[len("DESCONTOS"):].strip()
+                        if resto:
+                            self._processar_linha_rubrica(resto, secao_atual, meses_pagina, ano, pagina_num, dados)
+                elif secao_atual:
+                    # Linha comum da seção atual
+                    self._processar_linha_rubrica(linha, secao_atual, meses_pagina, ano, pagina_num, dados)
+
+    if not dados:
+        return pd.DataFrame(columns=['Discriminacao', 'Valor', 'Competencia', 'Pagina', 'Ano', 'Tipo'])
+
+    df = pd.DataFrame(dados)
+
+    # Remover registros com valor zero (opcional)
+    df = df[df['Valor'] != '0,00']
+
+    # Adicionar numeração sequencial para rubricas com mesmo nome e mesma competência
+    df['Sequencia'] = df.groupby(['Discriminacao', 'Competencia', 'Tipo']).cumcount() + 1
+    df['Discriminacao_Original'] = df['Discriminacao']
+
+    # Contar quantas vezes cada rubrica aparece na mesma competência
+    contagens = df.groupby(['Discriminacao_Original', 'Competencia', 'Tipo']).size().reset_index(name='Contagem')
+    df = df.merge(contagens, on=['Discriminacao_Original', 'Competencia', 'Tipo'], how='left')
+
+    df['Discriminacao'] = df.apply(
+        lambda row: f"{row['Discriminacao_Original']} #{row['Sequencia']}"
+        if row['Contagem'] > 1 else row['Discriminacao_Original'],
+        axis=1
+    )
+
+    # Selecionar colunas finais e ordenar
+    df = df[['Discriminacao', 'Valor', 'Competencia', 'Pagina', 'Ano', 'Tipo']]
+    df = df.sort_values(['Ano', 'Pagina', 'Tipo', 'Discriminacao', 'Competencia']).reset_index(drop=True)
+    return df
+
+def _processar_linha_rubrica(self, linha, secao, meses, ano, pagina, dados):
+    """Processa uma linha de rubrica, extrai valores e adiciona aos dados."""
+    # Padrão para números no formato brasileiro: 1.234,56 ou 0,00
+    padrao_num = r'(\d{1,3}(?:\.\d{3})*,\d{2})'
+    numeros = re.findall(padrao_num, linha)
+
+    if len(numeros) < len(meses):
+        return  # não há números suficientes (linha provavelmente não é de rubrica)
+
+    # Encontrar a posição do primeiro número para separar o nome da rubrica
+    primeiro_num = re.search(padrao_num, linha)
+    if not primeiro_num:
+        return
+    nome_rubrica = linha[:primeiro_num.start()].strip()
+
+    # Para cada mês, associar o valor correspondente
+    for i, mes_abbr in enumerate(meses):
+        if i >= len(numeros):
+            break
+        valor_str = numeros[i]
+        valor_float = self.converter_valor_string(valor_str)
+        if valor_float is not None and valor_float != 0:
+            mes_num = self.meses_map.get(mes_abbr)
+            if mes_num is None:
+                continue
+            competencia = f"{mes_num:02d}/{ano}"
+            dados.append({
+                'Discriminacao': nome_rubrica,
+                'Valor': valor_str,
+                'Competencia': competencia,
+                'Pagina': pagina,
+                'Ano': ano,
+                'Tipo': secao
+            })
     
     def processar_secao_tabela(self, tabela, inicio_secao, fim_secao, meses_colunas, ano, pagina_num, tipo):
         """Método antigo (mantido para compatibilidade)"""
