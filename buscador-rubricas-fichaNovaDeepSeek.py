@@ -1,103 +1,179 @@
-import re
+import streamlit as st
 import pdfplumber
 import pandas as pd
+import re
 from datetime import datetime
+from io import BytesIO
+from collections import defaultdict
+
+st.set_page_config(layout="wide")
 
 MESES_MAPA = {
-    "jan": 1, "fev": 2, "mar": 3, "abr": 4,
-    "mai": 5, "jun": 6, "jul": 7, "ago": 8,
-    "set": 9, "out": 10, "nov": 11, "dez": 12
+    "JAN":1,"FEV":2,"MAR":3,"ABR":4,"MAI":5,"JUN":6,
+    "JUL":7,"AGO":8,"SET":9,"OUT":10,"NOV":11,"DEZ":12
 }
 
-def limpar_valor(valor_str):
-    if not valor_str:
-        return None
-    valor_str = valor_str.replace(".", "").replace(",", ".")
-    try:
-        return float(valor_str)
-    except:
-        return None
+class FichaFinanceiraParser:
 
+    def __init__(self, pdf_bytes):
+        self.pdf_bytes = pdf_bytes
+        self.tipo_atual = None
+        self.ano_atual = None
+        self.meses_ativos = []
+        self.metadados = {}
+        self.dados = []
+        self.logs = []
 
-def extrair_dados_pdf(caminho_pdf):
+    def _normalizar_moeda(self, valor):
+        if not valor:
+            return None
+        valor = valor.replace('.', '').replace(',', '.')
+        try:
+            return float(valor)
+        except:
+            return None
 
-    dados = []
-    tipo_atual = None
-    ano_atual = None
+    def _detectar_ano(self, linha):
+        match = re.search(r"\b(20\d{2}|19\d{2})\b", linha)
+        if match:
+            self.ano_atual = int(match.group())
 
-    with pdfplumber.open(caminho_pdf) as pdf:
+    def _detectar_meses(self, linha):
+        meses_detectados = []
+        for mes in MESES_MAPA.keys():
+            if mes in linha.upper():
+                meses_detectados.append(mes)
+        if len(meses_detectados) >= 3:
+            self.meses_ativos = meses_detectados
 
-        for numero_pagina, pagina in enumerate(pdf.pages, start=1):
+    def _detectar_tipo(self, linha):
+        if "RENDIMENTO" in linha.upper():
+            self.tipo_atual = "RECEITA"
+        elif "DESCONTO" in linha.upper():
+            self.tipo_atual = "DESCONTO"
 
-            texto = pagina.extract_text()
-            if not texto:
+    def _extrair_metadados(self, texto):
+        nome = re.search(r"NOME.*?\n(.+)", texto, re.IGNORECASE)
+        cpf = re.search(r"\d{3}\.\d{3}\.\d{3}-\d{2}", texto)
+        cargo = re.search(r"CARGO.*?\n(.+)", texto, re.IGNORECASE)
+        emissao = re.search(r"EMISS[ÃA]O.*?(\d{2}/\d{2}/\d{4})", texto)
+
+        self.metadados = {
+            "Nome": nome.group(1).strip() if nome else "",
+            "CPF": cpf.group() if cpf else "",
+            "Cargo": cargo.group(1).strip() if cargo else "",
+            "Data Emissão": emissao.group(1) if emissao else ""
+        }
+
+    def _processar_linha_rubrica(self, linha, pagina):
+
+        padrao = r"(.+?)\s+((?:\d{1,3}(?:\.\d{3})*,\d{2}\s*)+)"
+        match = re.match(padrao, linha)
+
+        if not match:
+            return
+
+        descricao = match.group(1).strip()
+        valores = re.findall(r"\d{1,3}(?:\.\d{3})*,\d{2}", match.group(2))
+
+        for i, valor in enumerate(valores):
+            if i >= len(self.meses_ativos):
                 continue
 
-            linhas = texto.split("\n")
+            mes = self.meses_ativos[i]
+            mes_num = MESES_MAPA[mes]
 
-            # Detectar ano
-            for linha in linhas:
-                if "ANO DE REFERÊNCIA" in linha.upper():
-                    ano_match = re.search(r"\d{4}", linha)
-                    if ano_match:
-                        ano_atual = int(ano_match.group())
+            valor_float = self._normalizar_moeda(valor)
 
-            # Detectar meses ativos da página
-            meses_ativos = []
-            for linha in linhas:
-                if "JAN" in linha.upper() and "FEV" in linha.upper():
-                    partes = linha.lower().split()
-                    for p in partes:
-                        if p[:3] in MESES_MAPA:
-                            meses_ativos.append(p[:3])
+            if valor_float and valor_float != 0 and self.ano_atual:
 
-            for linha in linhas:
+                competencia = datetime(self.ano_atual, mes_num, 1)
 
-                linha_upper = linha.upper()
+                self.dados.append({
+                    "Discriminacao": descricao,
+                    "Valor": valor_float,
+                    "Competencia": competencia.strftime("%m/%Y"),
+                    "Pagina": pagina,
+                    "Ano": self.ano_atual,
+                    "Tipo": self.tipo_atual
+                })
 
-                if "RENDIMENTOS" in linha_upper:
-                    tipo_atual = "RECEITA"
+    def executar(self):
+
+        with pdfplumber.open(self.pdf_bytes) as pdf:
+
+            for numero_pagina, pagina in enumerate(pdf.pages, start=1):
+
+                texto = pagina.extract_text()
+                if not texto:
                     continue
 
-                if "DESCONTOS" in linha_upper:
-                    tipo_atual = "DESCONTO"
-                    continue
+                if numero_pagina == 1:
+                    self._extrair_metadados(texto)
 
-                # Regex para capturar rubrica + valores
-                match = re.match(r"(.+?)\s+([\d\.,\s]+)$", linha)
+                linhas = texto.split("\n")
 
-                if match and ano_atual and tipo_atual:
+                for linha in linhas:
 
-                    descricao = match.group(1).strip()
-                    valores_str = match.group(2).split()
+                    self._detectar_ano(linha)
+                    self._detectar_meses(linha)
+                    self._detectar_tipo(linha)
+                    self._processar_linha_rubrica(linha, numero_pagina)
 
-                    for i, valor in enumerate(valores_str):
-                        if i < len(meses_ativos):
+        df = pd.DataFrame(self.dados)
 
-                            mes_str = meses_ativos[i]
-                            mes_num = MESES_MAPA.get(mes_str)
+        if not df.empty:
+            df = df.sort_values("Competencia")
 
-                            valor_float = limpar_valor(valor)
+        return df, self.metadados
 
-                            if valor_float and valor_float != 0:
 
-                                competencia = datetime(
-                                    year=ano_atual,
-                                    month=mes_num,
-                                    day=1
-                                ).strftime("%b/%y").lower()
+def gerar_excel(df_filtrado, metadados):
 
-                                dados.append({
-                                    "Discriminacao": descricao,
-                                    "Valor": valor_float,
-                                    "Competencia": competencia,
-                                    "Pagina": numero_pagina,
-                                    "Ano": ano_atual,
-                                    "Tipo": tipo_atual
-                                })
+    output = BytesIO()
 
-    df = pd.DataFrame(dados)
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
 
-    df.sort_values(["Ano", "Competencia"], inplace=True)
+        df_filtrado.to_excel(writer, sheet_name="Rubricas Detalhadas", index=False)
 
-    return df
+        consolidado = df_filtrado.groupby(["Ano","Discriminacao"])["Valor"].sum().reset_index()
+        consolidado.to_excel(writer, sheet_name="Consolidado Anual", index=False)
+
+        df_meta = pd.DataFrame(list(metadados.items()), columns=["Campo","Valor"])
+        df_meta.to_excel(writer, sheet_name="Relatorio Servidor", index=False)
+
+    return output.getvalue()
+
+
+st.title("Extrator Profissional de Fichas Financeiras")
+
+arquivo = st.file_uploader("Upload do PDF", type="pdf")
+
+if arquivo:
+
+    parser = FichaFinanceiraParser(arquivo)
+    df, metadados = parser.executar()
+
+    if df.empty:
+        st.warning("Nenhum dado encontrado.")
+    else:
+
+        rubricas = sorted(df["Discriminacao"].unique())
+
+        selecionadas = st.multiselect(
+            "Selecione as rubricas para exportar",
+            rubricas,
+            default=rubricas
+        )
+
+        df_filtrado = df[df["Discriminacao"].isin(selecionadas)]
+
+        st.dataframe(df_filtrado)
+
+        excel_bytes = gerar_excel(df_filtrado, metadados)
+
+        st.download_button(
+            "Baixar Excel",
+            excel_bytes,
+            file_name="ficha_financeira_extraida.xlsx"
+        )
