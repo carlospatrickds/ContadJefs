@@ -11,24 +11,24 @@ import base64
 
 TABLES = {
     2020: [
-        (0.00, 1045.00, 0.075),
-        (1045.01, 2000.00, 0.09),
-        (2000.01, 3000.00, 0.12),
-        (3000.01, 5839.45, 0.14),
-        (5839.46, 10000.00, 0.145),
-        (10000.01, 20000.00, 0.165),
-        (20000.01, 39000.00, 0.19),
-        (39000.01, float('inf'), 0.22),
+        (0.00, 1045.00, 0.075),        # até um salário mínimo (R$ 1.045)
+        (1045.01, 2000.00, 0.09),      # de 1.045,01 até 2.000
+        (2000.01, 3000.00, 0.12),      # de 2.000,01 até 3.000
+        (3000.01, 5839.45, 0.14),      # de 3.000,01 até teto INSS
+        (5839.46, 10000.00, 0.145),    # de 5.839,46 até 10.000
+        (10000.01, 20000.00, 0.165),   # de 10.000,01 até 20.000
+        (20000.01, 39000.00, 0.19),    # de 20.000,01 até 39.000
+        (39000.01, float('inf'), 0.22),# acima de 39.000,01
     ],
     2021: [
-        (0.00, 1100.00, 0.075),
-        (1100.01, 2203.48, 0.09),
-        (2203.49, 3305.22, 0.12),
-        (3305.23, 6433.57, 0.14),
-        (6433.58, 11017.42, 0.145),
-        (11017.43, 22034.83, 0.165),
-        (22034.84, 42967.92, 0.19),
-        (42967.93, float('inf'), 0.22),
+        (0.00, 1100.00, 0.075),        # até 1 salário mínimo (R$ 1.100)
+        (1100.01, 2203.48, 0.09),      # de 1.100,01 até 2.203,48
+        (2203.49, 3305.22, 0.12),      # de 2.203,49 até 3.305,22
+        (3305.23, 6433.57, 0.14),      # de 3.305,23 até 6.433,57
+        (6433.58, 11017.42, 0.145),    # de 6.433,58 até 11.017,42
+        (11017.43, 22034.83, 0.165),   # de 11.017,43 até 22.034,83
+        (22034.84, 42967.92, 0.19),    # de 22.034,84 até 42.967,92
+        (42967.93, float('inf'), 0.22),# acima de 42.967,92
     ],
     2022: [
         (0.00, 1212.00, 0.075),
@@ -96,14 +96,21 @@ PORTARIAS = {
 AVAILABLE_YEARS = sorted(TABLES.keys())
 
 def calcular_contribuicao_progressiva(salario, tabela):
+    """
+    Calcula a contribuição progressiva para um dado salário.
+    Retorna (total_contribuicao, lista_detalhamento)
+    """
     if salario <= 0:
         return 0.0, []
+
     restante = salario
     total = 0.0
     detalhamento = []
+
     for i, (lim_inf, lim_sup, aliquota) in enumerate(tabela):
         if restante <= 0:
             break
+
         if i == 0:
             tributavel = min(restante, lim_sup)
         else:
@@ -112,6 +119,7 @@ def calcular_contribuicao_progressiva(salario, tabela):
             else:
                 largura_faixa = lim_sup - lim_inf
                 tributavel = min(restante, largura_faixa)
+
         if tributavel > 0:
             contrib = tributavel * aliquota
             total += contrib
@@ -122,13 +130,15 @@ def calcular_contribuicao_progressiva(salario, tabela):
                 "contribuicao": contrib
             })
             restante -= tributavel
+
     return total, detalhamento
 
 def formatar_moeda(valor):
+    """Formata valor para o padrão brasileiro (R$ 1.000,00)."""
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # -----------------------------------------------------------------------------
-# Geração de PDF comparativo com síntese e somatório
+# Geração de PDF detalhado com progressividade por ano e comparação
 # -----------------------------------------------------------------------------
 class PDF(FPDF):
     def header(self):
@@ -149,12 +159,15 @@ class PDF(FPDF):
         self.cell(0, 10, f'Página {self.page_no()}', align='C')
 
 def gerar_pdf_comparacao(dados_comparacao, observacao):
+    """Gera PDF pericial comparativo com detalhamento progressivo para duas bases,
+       e adiciona uma tabela síntese no final."""
     pdf = PDF()
     pdf.add_page()
     pdf.set_font('Arial', 'B', 11)
     pdf.cell(0, 10, 'Relatório Comparativo PSS - RPPS', ln=True, align='C')
     pdf.ln(5)
 
+    # Processa cada ano e guarda dados para a tabela síntese
     dados_sintese = []
 
     for idx, ano_data in enumerate(dados_comparacao):
@@ -166,6 +179,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         breakdown1 = ano_data['breakdown1']
         breakdown2 = ano_data['breakdown2']
 
+        # Adiciona nova página se não for o primeiro ano
         if idx > 0:
             pdf.add_page()
 
@@ -173,7 +187,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(0, 10, f"Ano {ano}", ln=True, align='C')
         pdf.ln(5)
 
-        # Base 1
+        # Tabela Base 1
         pdf.set_font('Arial', 'B', 10)
         pdf.cell(0, 8, f"Base 1 - Salário: {formatar_moeda(sal1)}", ln=True)
         pdf.set_font('Arial', '', 9)
@@ -182,18 +196,20 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(30, 8, 'Alíquota', border=1)
         pdf.cell(50, 8, 'Contribuição (R$)', border=1)
         pdf.ln()
+
         for det in breakdown1:
             pdf.cell(50, 8, det['faixa'], border=1)
             pdf.cell(40, 8, formatar_moeda(det['base']), border=1)
             pdf.cell(30, 8, det['aliquota'], border=1)
             pdf.cell(50, 8, formatar_moeda(det['contribuicao']), border=1)
             pdf.ln()
+
         pdf.set_font('Arial', 'B', 9)
         pdf.cell(120, 8, "Total Contribuição Base 1:", border=1)
         pdf.cell(50, 8, formatar_moeda(contrib1), border=1, ln=True)
         pdf.ln(5)
 
-        # Base 2
+        # Tabela Base 2
         pdf.set_font('Arial', 'B', 10)
         pdf.cell(0, 8, f"Base 2 - Salário: {formatar_moeda(sal2)}", ln=True)
         pdf.set_font('Arial', '', 9)
@@ -202,25 +218,28 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(30, 8, 'Alíquota', border=1)
         pdf.cell(50, 8, 'Contribuição (R$)', border=1)
         pdf.ln()
+
         for det in breakdown2:
             pdf.cell(50, 8, det['faixa'], border=1)
             pdf.cell(40, 8, formatar_moeda(det['base']), border=1)
             pdf.cell(30, 8, det['aliquota'], border=1)
             pdf.cell(50, 8, formatar_moeda(det['contribuicao']), border=1)
             pdf.ln()
+
         pdf.set_font('Arial', 'B', 9)
         pdf.cell(120, 8, "Total Contribuição Base 2:", border=1)
         pdf.cell(50, 8, formatar_moeda(contrib2), border=1, ln=True)
 
+        # Diferenças e efetivas
         diff_sal = sal2 - sal1
         diff_contrib = contrib2 - contrib1
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 10)
         pdf.cell(0, 8, "Diferenças:", ln=True)
         pdf.set_font('Arial', '', 9)
-        pdf.cell(80, 8, "Diferença Salário (Base2 - Base1):", border=1)
+        pdf.cell(80, 8, f"Diferença Salário (Base2 - Base1):", border=1)
         pdf.cell(50, 8, formatar_moeda(diff_sal), border=1, ln=True)
-        pdf.cell(80, 8, "Diferença Contribuição (Base2 - Base1):", border=1)
+        pdf.cell(80, 8, f"Diferença Contribuição (Base2 - Base1):", border=1)
         pdf.cell(50, 8, formatar_moeda(diff_contrib), border=1, ln=True)
 
         efetiva1 = (contrib1 / sal1 * 100) if sal1 > 0 else 0
@@ -230,11 +249,14 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(80, 8, "Alíquota Efetiva Base 2:", border=1)
         pdf.cell(50, 8, f"{efetiva2:.2f}%", border=1, ln=True)
 
+        # Portaria de referência
         pdf.ln(5)
         pdf.set_font('Arial', 'I', 8)
         pdf.cell(0, 6, f"Fonte: {PORTARIAS.get(ano, 'Portaria não especificada')}", ln=True)
+
         pdf.ln(10)
 
+        # Armazena dados para a síntese
         dados_sintese.append({
             "Ano": ano,
             "Salário Base 1": formatar_moeda(sal1),
@@ -243,100 +265,91 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
             "Contribuição Base 2": formatar_moeda(contrib2),
             "Diferença Salário": formatar_moeda(diff_sal),
             "Diferença Contribuição": formatar_moeda(diff_contrib),
-            "diff_sal_raw": diff_sal,
-            "diff_contrib_raw": diff_contrib,
         })
 
-    # Página de síntese
+    # Adiciona página de síntese
     if dados_sintese:
         pdf.add_page()
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(0, 10, 'Síntese Comparativa', ln=True, align='C')
         pdf.ln(5)
 
-        # Cabeçalho com larguras ajustadas (total 195mm)
+        # Cabeçalho da tabela síntese
         pdf.set_font('Arial', 'B', 8)
         pdf.cell(15, 8, 'Ano', border=1)
-        pdf.cell(30, 8, 'Salário Base 1', border=1)
-        pdf.cell(30, 8, 'Salário Base 2', border=1)
-        pdf.cell(30, 8, 'Contribuição Base 1', border=1)
-        pdf.cell(30, 8, 'Contribuição Base 2', border=1)
-        pdf.cell(28, 8, 'Diferença Salário', border=1)
-        pdf.cell(32, 8, 'Diferença Contribuição', border=1)
+        pdf.cell(35, 8, 'Salário Base 1', border=1)
+        pdf.cell(35, 8, 'Salário Base 2', border=1)
+        pdf.cell(35, 8, 'Contribuição Base 1', border=1)
+        pdf.cell(35, 8, 'Contribuição Base 2', border=1)
+        pdf.cell(30, 8, 'Diferença Salário', border=1)
+        pdf.cell(35, 8, 'Diferença Contribuição', border=1)
         pdf.ln()
 
-        # Dados
         pdf.set_font('Arial', '', 8)
-        total_diff_sal = 0.0
-        total_diff_contrib = 0.0
         for linha in dados_sintese:
             pdf.cell(15, 8, str(linha['Ano']), border=1)
-            pdf.cell(30, 8, linha['Salário Base 1'], border=1)
-            pdf.cell(30, 8, linha['Salário Base 2'], border=1)
-            pdf.cell(30, 8, linha['Contribuição Base 1'], border=1)
-            pdf.cell(30, 8, linha['Contribuição Base 2'], border=1)
-            pdf.cell(28, 8, linha['Diferença Salário'], border=1)
-            pdf.cell(32, 8, linha['Diferença Contribuição'], border=1)
+            pdf.cell(35, 8, linha['Salário Base 1'], border=1)
+            pdf.cell(35, 8, linha['Salário Base 2'], border=1)
+            pdf.cell(35, 8, linha['Contribuição Base 1'], border=1)
+            pdf.cell(35, 8, linha['Contribuição Base 2'], border=1)
+            pdf.cell(30, 8, linha['Diferença Salário'], border=1)
+            pdf.cell(35, 8, linha['Diferença Contribuição'], border=1)
             pdf.ln()
-            total_diff_sal += linha['diff_sal_raw']
-            total_diff_contrib += linha['diff_contrib_raw']
 
-        # Linha de total
-        pdf.set_font('Arial', 'B', 8)
-        pdf.cell(15, 8, 'Total', border=1)
-        pdf.cell(30, 8, '', border=1)
-        pdf.cell(30, 8, '', border=1)
-        pdf.cell(30, 8, '', border=1)
-        pdf.cell(30, 8, '', border=1)
-        pdf.cell(28, 8, formatar_moeda(total_diff_sal), border=1)
-        pdf.cell(32, 8, formatar_moeda(total_diff_contrib), border=1)
-        pdf.ln()
-
-    # Observações após uma linha de markdown (linha horizontal)
+    # Observações
     if observacao:
-        pdf.ln(5)
-        pdf.set_draw_color(0, 0, 0)
-        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-        pdf.ln(5)
+        pdf.add_page()
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(0, 10, 'Observações:', ln=True)
         pdf.set_font('Arial', '', 10)
         pdf.multi_cell(0, 6, observacao)
 
-    out = pdf.output(dest='S')
-    if isinstance(out, str):
-        return out.encode('latin1')
-    return out
+    # Retorna os bytes do PDF
+    pdf_output = pdf.output(dest='S')
+    if isinstance(pdf_output, str):
+        return pdf_output.encode('latin1')
+    else:
+        return pdf_output
 
 # -----------------------------------------------------------------------------
-# Interface Streamlit (idêntica à versão anterior)
+# Interface Streamlit
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="Calculadora PSS - RPPS", layout="wide")
 st.title("📊 Calculadora PSS - Servidores Públicos Federais (RPPS)")
 st.markdown("Calcule a contribuição previdenciária (PSS) para o Regime Próprio da União (2020 a 2026).")
 
+# Sidebar: informações do processo
 with st.sidebar:
     st.header("Informações do Processo")
     processo = st.text_input("Número do Processo", key="processo")
     autor = st.text_input("Nome do Autor da Ação", key="autor")
     observacao = st.text_area("Observações (opcional)", height=100)
 
+# Criação de abas
 tab1, tab2, tab3 = st.tabs(["🔍 Cálculo Detalhado por Faixa", "📅 Relatório Anual (PDF Detalhado)", "⚖️ Comparação de Bases"])
 
-# Tab 1 (cálculo detalhado) – mantido
+# -----------------------------------------------------------------------------
+# Tab 1: Cálculo Detalhado por Faixa (um ano)
+# -----------------------------------------------------------------------------
 with tab1:
     col1, col2 = st.columns(2)
     with col1:
         ano_detalhe = st.selectbox("Selecione o ano", options=AVAILABLE_YEARS, key="detail_year")
         salario_detalhe = st.number_input(
             f"Salário (R$) – base de contribuição ({ano_detalhe})",
-            min_value=0.0, value=10000.0, step=100.0, format="%.2f", key="detail_salary")
+            min_value=0.0,
+            value=10000.0,
+            step=100.0,
+            format="%.2f",
+            key="detail_salary"
+        )
     with col2:
         tabela = TABLES[ano_detalhe]
         total_contrib, detalhes = calcular_contribuicao_progressiva(salario_detalhe, tabela)
         aliquota_efetiva = (total_contrib / salario_detalhe * 100) if salario_detalhe > 0 else 0.0
         st.metric("Total Contribuição", formatar_moeda(total_contrib))
         st.metric("Alíquota Efetiva", f"{aliquota_efetiva:.2f}%")
+
     if detalhes:
         st.subheader("Detalhamento por Faixa")
         df_detalhe = pd.DataFrame(detalhes)
@@ -344,13 +357,21 @@ with tab1:
         df_detalhe["contribuicao"] = df_detalhe["contribuicao"].apply(formatar_moeda)
         st.dataframe(df_detalhe, use_container_width=True, hide_index=True)
 
-# Tab 2 (relatório anual) – mantido
+# -----------------------------------------------------------------------------
+# Tab 2: Relatório Anual (PDF Detalhado)
+# -----------------------------------------------------------------------------
 with tab2:
     st.subheader("📅 Informe os salários para cada ano (2020 a 2026)")
     salarios_anuais = {}
     for ano in AVAILABLE_YEARS:
         salarios_anuais[ano] = st.number_input(
-            f"Salário para {ano} (R$)", min_value=0.0, value=10000.0, step=100.0, format="%.2f", key=f"salary_{ano}")
+            f"Salário para {ano} (R$)",
+            min_value=0.0,
+            value=10000.0,
+            step=100.0,
+            format="%.2f",
+            key=f"salary_{ano}"
+        )
 
     if st.button("📄 Gerar Relatório PDF Detalhado", key="gerar_pdf"):
         dados_relatorio = []
@@ -367,10 +388,11 @@ with tab2:
                     "contrib_raw": contrib,
                     "detalhes": detalhes
                 })
+
         if not dados_relatorio:
             st.warning("Nenhum dado para gerar relatório. Informe pelo menos um salário positivo.")
         else:
-            # Função local para gerar PDF detalhado (igual à versão anterior)
+            # Função local para gerar PDF detalhado (similar ao anterior)
             class PDFDet(FPDF):
                 def header(self):
                     if self.page_no() == 1:
@@ -383,6 +405,7 @@ with tab2:
                         if 'autor' in st.session_state and st.session_state.autor:
                             self.cell(0, 6, f"Autor: {st.session_state.autor}", ln=True)
                         self.ln(5)
+
                 def footer(self):
                     self.set_y(-15)
                     self.set_font('Arial', 'I', 8)
@@ -399,12 +422,14 @@ with tab2:
                 pdf.cell(60, 8, 'Contribuição Total (R$)', border=1)
                 pdf.cell(40, 8, 'Alíquota Efetiva', border=1)
                 pdf.ln()
+
                 for linha in dados_anos:
                     pdf.cell(30, 8, str(linha['ano']), border=1)
                     pdf.cell(50, 8, linha['salario'], border=1)
                     pdf.cell(60, 8, linha['contribuicao'], border=1)
                     pdf.cell(40, 8, linha['aliquota'], border=1)
                     pdf.ln()
+
                 for linha in dados_anos:
                     if not linha.get('detalhes'):
                         continue
@@ -417,12 +442,14 @@ with tab2:
                     pdf.cell(40, 8, 'Alíquota', border=1)
                     pdf.cell(50, 8, 'Contribuição (R$)', border=1)
                     pdf.ln()
+
                     for det in linha['detalhes']:
                         pdf.cell(60, 8, det['faixa'], border=1)
                         pdf.cell(50, 8, formatar_moeda(det['base']), border=1)
                         pdf.cell(40, 8, det['aliquota'], border=1)
                         pdf.cell(50, 8, formatar_moeda(det['contribuicao']), border=1)
                         pdf.ln()
+
                     pdf.set_font('Arial', 'B', 10)
                     pdf.cell(150, 8, "Total da Contribuição:", border=1)
                     pdf.cell(50, 8, formatar_moeda(linha['contrib_raw']), border=1, ln=True)
@@ -430,12 +457,14 @@ with tab2:
                     pdf.ln(5)
                     pdf.set_font('Arial', 'I', 8)
                     pdf.cell(0, 6, f"Fonte: {PORTARIAS.get(linha['ano'], 'Portaria não especificada')}", ln=True)
+
                 if obs:
                     pdf.add_page()
                     pdf.set_font('Arial', 'B', 11)
                     pdf.cell(0, 10, 'Observações:', ln=True)
                     pdf.set_font('Arial', '', 10)
                     pdf.multi_cell(0, 6, obs)
+
                 out = pdf.output(dest='S')
                 if isinstance(out, str):
                     return out.encode('latin1')
@@ -447,7 +476,9 @@ with tab2:
             st.markdown(href, unsafe_allow_html=True)
             st.success("Relatório detalhado gerado com sucesso!")
 
-# Tab 3 (comparação de bases)
+# -----------------------------------------------------------------------------
+# Tab 3: Comparação de Bases
+# -----------------------------------------------------------------------------
 with tab3:
     st.subheader("⚖️ Comparação entre duas bases de cálculo por ano")
     st.markdown("Informe dois valores de salário para cada ano. A diferença na contribuição será calculada.")
@@ -458,12 +489,24 @@ with tab3:
         st.markdown("**Base 1 (Salário)**")
         for ano in AVAILABLE_YEARS:
             bases[f"base1_{ano}"] = st.number_input(
-                f"{ano} (R$)", min_value=0.0, value=10000.0, step=100.0, format="%.2f", key=f"comp_base1_{ano}")
+                f"{ano} (R$)",
+                min_value=0.0,
+                value=10000.0,
+                step=100.0,
+                format="%.2f",
+                key=f"comp_base1_{ano}"
+            )
     with cols[1]:
         st.markdown("**Base 2 (Salário)**")
         for ano in AVAILABLE_YEARS:
             bases[f"base2_{ano}"] = st.number_input(
-                f"{ano} (R$)", min_value=0.0, value=10000.0, step=100.0, format="%.2f", key=f"comp_base2_{ano}")
+                f"{ano} (R$)",
+                min_value=0.0,
+                value=10000.0,
+                step=100.0,
+                format="%.2f",
+                key=f"comp_base2_{ano}"
+            )
 
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
@@ -519,7 +562,9 @@ with tab3:
                 st.markdown(href, unsafe_allow_html=True)
                 st.success("Relatório comparativo gerado com sucesso!")
 
+# -----------------------------------------------------------------------------
 # Expansor com as tabelas de referência
+# -----------------------------------------------------------------------------
 with st.expander("📋 Ver Tabelas de Contribuição (por ano)"):
     ano_tabela = st.selectbox("Selecione o ano para visualizar a tabela", options=AVAILABLE_YEARS, key="table_year")
     tabela_exibir = TABLES[ano_tabela]
