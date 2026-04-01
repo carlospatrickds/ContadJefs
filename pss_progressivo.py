@@ -21,9 +21,6 @@ TABLES = {
         (39000.01, float('inf'), 0.22),# acima de 39.000,01
     ],
     2021: [
-        (0.00, 1100.00, 0.075),        # até 1 salário mínimo em 2021? Usaremos o mesmo valor da faixa I da portaria?
-        # Na verdade, a portaria de 2021 define as faixas com valores fixos e o salário-mínimo era R$ 1.100.
-        # Mas a portaria trouxe valores exatos. Vamos usar os exatos da portaria SEPRT nº 636/2021.
         (0.00, 1100.00, 0.075),        # até 1 salário mínimo (R$ 1.100)
         (1100.01, 2203.48, 0.09),      # de 1.100,01 até 2.203,48
         (2203.49, 3305.22, 0.12),      # de 2.203,49 até 3.305,22
@@ -104,18 +101,12 @@ def calcular_contribuicao_progressiva(salario, tabela):
         if restante <= 0:
             break
 
-        # Determina a parte do salário que se enquadra nesta faixa
         if i == 0:
-            # Primeira faixa: começa em 0
             tributavel = min(restante, lim_sup)
         else:
             if lim_sup == float('inf'):
                 tributavel = restante
             else:
-                # Largura da faixa = lim_sup - lim_inf + 0.01? Na verdade, as faixas são contíguas.
-                # Para garantir que a tributação seja exata, calculamos a parte que cabe nesta faixa:
-                # O valor já foi reduzido pelas faixas anteriores.
-                # Basta pegar o mínimo entre o restante e a largura da faixa.
                 largura_faixa = lim_sup - lim_inf
                 tributavel = min(restante, largura_faixa)
 
@@ -146,7 +137,6 @@ class PDF(FPDF):
             self.cell(0, 10, 'Relatório de Cálculo PSS - RPPS', ln=True, align='C')
             self.ln(5)
             self.set_font('Arial', '', 10)
-            # Dados do processo vindos da sessão
             if 'processo' in st.session_state and st.session_state.processo:
                 self.cell(0, 6, f"Processo: {st.session_state.processo}", ln=True)
             if 'autor' in st.session_state and st.session_state.autor:
@@ -166,7 +156,7 @@ def gerar_pdf(dados_anos, observacao):
     pdf.cell(0, 10, 'Resumo por Ano', ln=True)
     pdf.set_font('Arial', '', 10)
 
-    # Cabeçalho da tabela
+    # Cabeçalho da tabela (ajustado para melhor visualização)
     pdf.cell(30, 8, 'Ano', border=1)
     pdf.cell(50, 8, 'Salário (R$)', border=1)
     pdf.cell(60, 8, 'Contribuição Total (R$)', border=1)
@@ -187,7 +177,12 @@ def gerar_pdf(dados_anos, observacao):
         pdf.set_font('Arial', '', 10)
         pdf.multi_cell(0, 6, observacao)
 
-    return pdf.output(dest='S').encode('latin1')
+    # Obtém o conteúdo do PDF como string (ou bytes) e converte para bytes
+    pdf_output = pdf.output(dest='S')
+    if isinstance(pdf_output, str):
+        return pdf_output.encode('latin1')
+    else:
+        return pdf_output  # already bytes
 
 # -----------------------------------------------------------------------------
 # Interface Streamlit
