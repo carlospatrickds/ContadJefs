@@ -240,11 +240,10 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
             "Contribuição Base 2": formatar_moeda(contrib2),
             "Diferença entre valores_base": formatar_moeda(diff_valor),
             "Diferença Contribuição": formatar_moeda(diff_contrib),
-            "diff_valor_raw": diff_valor,
             "diff_contrib_raw": diff_contrib,
         })
 
-    # Página de síntese
+    # Página de síntese (Corrigida)
     if dados_sintese:
         pdf.add_page()
         pdf.set_font('Arial', 'B', 11)
@@ -256,15 +255,24 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(15, 8, 'Ano', border=1)
         pdf.cell(30, 8, 'Valor Base 1', border=1)
         pdf.cell(30, 8, 'Valor Base 2', border=1)
-        pdf.cell(30, 8, 'Contribuição Base 1', border=1)
-        pdf.cell(30, 8, 'Contribuição Base 2', border=1)
-        pdf.cell(28, 8, 'Diferença entre valores_base', border=1)
-        pdf.cell(32, 8, 'Diferença Contribuição', border=1)
-        pdf.ln()
+        pdf.cell(30, 8, 'Contrib. Base 1', border=1) 
+        pdf.cell(30, 8, 'Contrib. Base 2', border=1)
+        
+        # 1. Salva as coordenadas atuais (X e Y) antes das células problemáticas
+        x = pdf.get_x()
+        y = pdf.get_y()
+        
+        # 2. Usa multi_cell para permitir a quebra de linha (altura 4 por linha = 8 no total)
+        pdf.multi_cell(28, 4, 'Diferença entre\nvalores_base', border=1, align='C')
+        
+        # 3. Restaura o cursor para o lado direito da célula anterior e imprime a última coluna
+        pdf.set_xy(x + 28, y)
+        pdf.multi_cell(32, 4, 'Diferença\nContribuição', border=1, align='C')
 
         pdf.set_font('Arial', '', 8)
-        total_diff_valor = 0.0
+        
         total_diff_contrib = 0.0
+        
         for linha in dados_sintese:
             pdf.cell(15, 8, str(linha['Ano']), border=1)
             pdf.cell(30, 8, linha['Valor Base 1'], border=1)
@@ -274,17 +282,16 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
             pdf.cell(28, 8, linha['Diferença entre valores_base'], border=1)
             pdf.cell(32, 8, linha['Diferença Contribuição'], border=1)
             pdf.ln()
-            total_diff_valor += linha['diff_valor_raw']
             total_diff_contrib += linha['diff_contrib_raw']
 
-        # Linha de total
+        # Linha de total (Somando apenas a diferença de contribuição)
         pdf.set_font('Arial', 'B', 8)
         pdf.cell(15, 8, 'Total', border=1)
         pdf.cell(30, 8, '', border=1)
         pdf.cell(30, 8, '', border=1)
         pdf.cell(30, 8, '', border=1)
         pdf.cell(30, 8, '', border=1)
-        pdf.cell(28, 8, formatar_moeda(total_diff_valor), border=1)
+        pdf.cell(28, 8, '-', border=1, align='C') # Retirada a soma da base
         pdf.cell(32, 8, formatar_moeda(total_diff_contrib), border=1)
         pdf.ln()
 
@@ -305,7 +312,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
     return out
 
 # -----------------------------------------------------------------------------
-# Interface Streamlit (idêntica à versão anterior, apenas com os novos nomes)
+# Interface Streamlit 
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="Calculadora PSS - RPPS", layout="wide")
 st.title("📊 Calculadora PSS - Servidores Públicos Federais (RPPS)")
@@ -313,13 +320,15 @@ st.markdown("Calcule a contribuição previdenciária (PSS) para o Regime Própr
 
 with st.sidebar:
     st.header("Informações do Processo")
-    processo = st.text_input("Número do Processo", key="processo")
-    autor = st.text_input("Nome do Autor da Ação", key="autor")
+    if 'processo' not in st.session_state: st.session_state.processo = ""
+    if 'autor' not in st.session_state: st.session_state.autor = ""
+    st.session_state.processo = st.text_input("Número do Processo", key="processo_input", value=st.session_state.processo)
+    st.session_state.autor = st.text_input("Nome do Autor da Ação", key="autor_input", value=st.session_state.autor)
     observacao = st.text_area("Observações (opcional)", height=100)
 
 tab1, tab2, tab3 = st.tabs(["🔍 Cálculo Detalhado por Faixa", "📅 Relatório Anual (PDF Detalhado)", "⚖️ Comparação de Bases"])
 
-# Tab 1: Cálculo detalhado por faixa (mantido)
+# Tab 1: Cálculo detalhado por faixa
 with tab1:
     col1, col2 = st.columns(2)
     with col1:
@@ -340,7 +349,7 @@ with tab1:
         df_detalhe["contribuicao"] = df_detalhe["contribuicao"].apply(formatar_moeda)
         st.dataframe(df_detalhe, use_container_width=True, hide_index=True)
 
-# Tab 2: Relatório anual (PDF detalhado) – mantido
+# Tab 2: Relatório anual (PDF detalhado)
 with tab2:
     st.subheader("📅 Informe os valores para cada ano (2020 a 2026)")
     valores_anuais = {}
@@ -366,7 +375,6 @@ with tab2:
         if not dados_relatorio:
             st.warning("Nenhum dado para gerar relatório. Informe pelo menos um valor positivo.")
         else:
-            # Função local para gerar PDF detalhado (idêntica à anterior, mas com "Valor" no lugar de "Salário")
             class PDFDet(FPDF):
                 def header(self):
                     if self.page_no() == 1:
