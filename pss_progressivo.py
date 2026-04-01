@@ -483,7 +483,7 @@ with tab3:
                         "Contribuição 1 (R$)": formatar_moeda(contrib1),
                         "Salário 2 (R$)": formatar_moeda(sal2),
                         "Contribuição 2 (R$)": formatar_moeda(contrib2),
-                        "Diferença Salário (R$)": formatar_moeda(diff_sal),
+                        #"Diferença Salário (R$)": formatar_moeda(diff_sal),
                         "Diferença Contribuição (R$)": formatar_moeda(diff_contrib),
                     })
             if comparacao:
