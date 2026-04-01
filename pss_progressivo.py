@@ -4,7 +4,7 @@ import pandas as pd
 # -----------------------------------------------------------------------------
 # Contribution tables for RPPS (Regime Próprio de Previdência Social da União)
 # Each year's table is a list of (lower_bound, upper_bound, rate)
-# Rates are given as decimals (e.g., 0.075 for 7.5%)
+# The calculation uses these brackets progressively.
 # -----------------------------------------------------------------------------
 
 TABLES = {
@@ -61,13 +61,37 @@ TABLES = {
 }
 
 def calculate_contribution(salary, table):
-    """Calculate the contribution amount for a given salary and table."""
+    """
+    Calculate the progressive contribution for a given salary.
+    Each bracket contributes (portion inside bracket) * rate.
+    """
     if salary <= 0:
         return 0.0
-    for lower, upper, rate in table:
-        if lower <= salary <= upper:
-            return salary * rate
-    return 0.0  # fallback (should never happen)
+
+    remaining = salary
+    total = 0.0
+
+    for i, (lower, upper, rate) in enumerate(table):
+        if remaining <= 0:
+            break
+
+        # Amount that fits in this bracket
+        if i == 0:
+            # First bracket starts at 0
+            taxable = min(remaining, upper)
+        else:
+            # For subsequent brackets, the bracket width = upper - lower
+            # But we need to consider the actual remaining salary
+            # Actually, the correct portion is: the part of 'remaining' that falls
+            # into this bracket, which cannot exceed the bracket's range.
+            # Since brackets are contiguous and we process in order, we can simply:
+            bracket_max = upper - lower + 0.01 if upper != float('inf') else float('inf')
+            taxable = min(remaining, bracket_max)
+
+        total += taxable * rate
+        remaining -= taxable
+
+    return total
 
 def format_currency(value):
     """Format value as Brazilian real."""
@@ -116,4 +140,4 @@ df["Alíquota"] = df["Alíquota"].apply(lambda x: f"{x*100:.2f}%")
 st.dataframe(df, use_container_width=True, hide_index=True)
 
 st.markdown("---")
-st.caption("Fonte: Portarias Interministeriais MPS/MF dos respectivos anos.")
+st.caption("Fonte: Portarias Interministeriais MPS/MF dos respectivos anos. O cálculo é progressivo por faixas.")
