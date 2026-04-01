@@ -92,10 +92,10 @@ PORTARIAS = {
 
 AVAILABLE_YEARS = sorted(TABLES.keys())
 
-def calcular_contribuicao_progressiva(valor, tabela):
-    if valor <= 0:
+def calcular_contribuicao_progressiva(salario, tabela):
+    if salario <= 0:
         return 0.0, []
-    restante = valor
+    restante = salario
     total = 0.0
     detalhamento = []
     for i, (lim_inf, lim_sup, aliquota) in enumerate(tabela):
@@ -156,8 +156,8 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
 
     for idx, ano_data in enumerate(dados_comparacao):
         ano = ano_data['ano']
-        val1 = ano_data['sal1']
-        val2 = ano_data['sal2']
+        sal1 = ano_data['sal1']
+        sal2 = ano_data['sal2']
         contrib1 = ano_data['contrib1']
         contrib2 = ano_data['contrib2']
         breakdown1 = ano_data['breakdown1']
@@ -172,7 +172,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
 
         # Base 1
         pdf.set_font('Arial', 'B', 10)
-        pdf.cell(0, 8, f"Base 1 - Valor: {formatar_moeda(val1)}", ln=True)
+        pdf.cell(0, 8, f"Base 1 - Valor: {formatar_moeda(sal1)}", ln=True)
         pdf.set_font('Arial', '', 9)
         pdf.cell(50, 8, 'Faixa de Valor', border=1)
         pdf.cell(40, 8, 'Base (R$)', border=1)
@@ -192,7 +192,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
 
         # Base 2
         pdf.set_font('Arial', 'B', 10)
-        pdf.cell(0, 8, f"Base 2 - Valor: {formatar_moeda(val2)}", ln=True)
+        pdf.cell(0, 8, f"Base 2 - Valor: {formatar_moeda(sal2)}", ln=True)
         pdf.set_font('Arial', '', 9)
         pdf.cell(50, 8, 'Faixa de Valor', border=1)
         pdf.cell(40, 8, 'Base (R$)', border=1)
@@ -209,7 +209,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(120, 8, "Total Contribuição Base 2:", border=1)
         pdf.cell(50, 8, formatar_moeda(contrib2), border=1, ln=True)
 
-        diff_valor = val2 - val1
+        diff_valor = sal2 - sal1
         diff_contrib = contrib2 - contrib1
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 10)
@@ -220,8 +220,8 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(80, 8, "Diferença Contribuição (Base2 - Base1):", border=1)
         pdf.cell(50, 8, formatar_moeda(diff_contrib), border=1, ln=True)
 
-        efetiva1 = (contrib1 / val1 * 100) if val1 > 0 else 0
-        efetiva2 = (contrib2 / val2 * 100) if val2 > 0 else 0
+        efetiva1 = (contrib1 / sal1 * 100) if sal1 > 0 else 0
+        efetiva2 = (contrib2 / sal2 * 100) if sal2 > 0 else 0
         pdf.cell(80, 8, "Alíquota Efetiva Base 1:", border=1)
         pdf.cell(50, 8, f"{efetiva1:.2f}%", border=1, ln=True)
         pdf.cell(80, 8, "Alíquota Efetiva Base 2:", border=1)
@@ -234,12 +234,13 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
 
         dados_sintese.append({
             "Ano": ano,
-            "Valor Base 1": formatar_moeda(val1),
-            "Valor Base 2": formatar_moeda(val2),
+            "Valor Base 1": formatar_moeda(sal1),
+            "Valor Base 2": formatar_moeda(sal2),
             "Contribuição Base 1": formatar_moeda(contrib1),
             "Contribuição Base 2": formatar_moeda(contrib2),
             "Diferença entre valores_base": formatar_moeda(diff_valor),
             "Diferença Contribuição": formatar_moeda(diff_contrib),
+            "diff_valor_raw": diff_valor,
             "diff_contrib_raw": diff_contrib,
         })
 
@@ -250,66 +251,40 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(0, 10, 'Síntese Comparativa', ln=True, align='C')
         pdf.ln(5)
 
-        # Cabeçalho com quebra de linha na coluna "Diferença entre valores_base"
+        # Cabeçalho com larguras ajustadas (total 195mm)
         pdf.set_font('Arial', 'B', 8)
-        # Posicionamento manual para permitir multi_cell
-        x = pdf.get_x()
-        y = pdf.get_y()
-        # Ano
         pdf.cell(15, 8, 'Ano', border=1)
-        # Valor Base 1
         pdf.cell(30, 8, 'Valor Base 1', border=1)
-        # Valor Base 2
         pdf.cell(30, 8, 'Valor Base 2', border=1)
-        # Contribuição Base 1
         pdf.cell(30, 8, 'Contribuição Base 1', border=1)
-        # Contribuição Base 2
         pdf.cell(30, 8, 'Contribuição Base 2', border=1)
-        # Diferença entre valores_base (com quebra de linha)
-        pdf.set_font('Arial', 'B', 7)
-        pdf.multi_cell(28, 4, "Diferença entre\nvalores_base", border=1, align='C')
-        # Ajusta a posição Y após o multi_cell
-        y_after = pdf.get_y()
-        # Recupera a posição X para a próxima célula
-        pdf.set_y(y)
-        # Avança X após a célula multi_cell (28mm)
-        pdf.set_x(x + 15 + 30 + 30 + 30 + 30)  # soma das anteriores
-        # Diferença Contribuição
-        pdf.set_font('Arial', 'B', 8)
+        pdf.cell(28, 8, 'Diferença entre valores_base', border=1)
         pdf.cell(32, 8, 'Diferença Contribuição', border=1)
-        # Ajusta Y para a próxima linha
-        pdf.set_y(y_after)
-        pdf.ln(8)
+        pdf.ln()
 
-        # Dados
         pdf.set_font('Arial', '', 8)
+        total_diff_valor = 0.0
         total_diff_contrib = 0.0
         for linha in dados_sintese:
-            x = pdf.get_x()
-            y = pdf.get_y()
             pdf.cell(15, 8, str(linha['Ano']), border=1)
             pdf.cell(30, 8, linha['Valor Base 1'], border=1)
             pdf.cell(30, 8, linha['Valor Base 2'], border=1)
             pdf.cell(30, 8, linha['Contribuição Base 1'], border=1)
             pdf.cell(30, 8, linha['Contribuição Base 2'], border=1)
-            pdf.multi_cell(28, 8, linha['Diferença entre valores_base'], border=1, align='R')
-            # Ajusta Y para a próxima célula
-            y_after = pdf.get_y()
-            pdf.set_y(y)
-            pdf.set_x(x + 15 + 30 + 30 + 30 + 30)
+            pdf.cell(28, 8, linha['Diferença entre valores_base'], border=1)
             pdf.cell(32, 8, linha['Diferença Contribuição'], border=1)
-            pdf.set_y(y_after)
-            pdf.ln(8)
+            pdf.ln()
+            total_diff_valor += linha['diff_valor_raw']
             total_diff_contrib += linha['diff_contrib_raw']
 
-        # Linha de total (apenas para diferença de contribuição)
+        # Linha de total
         pdf.set_font('Arial', 'B', 8)
         pdf.cell(15, 8, 'Total', border=1)
         pdf.cell(30, 8, '', border=1)
         pdf.cell(30, 8, '', border=1)
         pdf.cell(30, 8, '', border=1)
         pdf.cell(30, 8, '', border=1)
-        pdf.cell(28, 8, '', border=1)
+        pdf.cell(28, 8, formatar_moeda(total_diff_valor), border=1)
         pdf.cell(32, 8, formatar_moeda(total_diff_contrib), border=1)
         pdf.ln()
 
@@ -330,7 +305,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
     return out
 
 # -----------------------------------------------------------------------------
-# Interface Streamlit (idêntica à versão anterior, com ajustes de texto)
+# Interface Streamlit (idêntica à versão anterior, apenas com os novos nomes)
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="Calculadora PSS - RPPS", layout="wide")
 st.title("📊 Calculadora PSS - Servidores Públicos Federais (RPPS)")
@@ -344,18 +319,18 @@ with st.sidebar:
 
 tab1, tab2, tab3 = st.tabs(["🔍 Cálculo Detalhado por Faixa", "📅 Relatório Anual (PDF Detalhado)", "⚖️ Comparação de Bases"])
 
-# Tab 1: Cálculo detalhado por faixa
+# Tab 1: Cálculo detalhado por faixa (mantido)
 with tab1:
     col1, col2 = st.columns(2)
     with col1:
         ano_detalhe = st.selectbox("Selecione o ano", options=AVAILABLE_YEARS, key="detail_year")
-        valor_detalhe = st.number_input(
+        salario_detalhe = st.number_input(
             f"Valor (R$) – base de contribuição ({ano_detalhe})",
-            min_value=0.0, value=10000.0, step=100.0, format="%.2f", key="detail_valor")
+            min_value=0.0, value=10000.0, step=100.0, format="%.2f", key="detail_salary")
     with col2:
         tabela = TABLES[ano_detalhe]
-        total_contrib, detalhes = calcular_contribuicao_progressiva(valor_detalhe, tabela)
-        aliquota_efetiva = (total_contrib / valor_detalhe * 100) if valor_detalhe > 0 else 0.0
+        total_contrib, detalhes = calcular_contribuicao_progressiva(salario_detalhe, tabela)
+        aliquota_efetiva = (total_contrib / salario_detalhe * 100) if salario_detalhe > 0 else 0.0
         st.metric("Total Contribuição", formatar_moeda(total_contrib))
         st.metric("Alíquota Efetiva", f"{aliquota_efetiva:.2f}%")
     if detalhes:
@@ -365,7 +340,7 @@ with tab1:
         df_detalhe["contribuicao"] = df_detalhe["contribuicao"].apply(formatar_moeda)
         st.dataframe(df_detalhe, use_container_width=True, hide_index=True)
 
-# Tab 2: Relatório anual (PDF detalhado)
+# Tab 2: Relatório anual (PDF detalhado) – mantido
 with tab2:
     st.subheader("📅 Informe os valores para cada ano (2020 a 2026)")
     valores_anuais = {}
@@ -391,7 +366,7 @@ with tab2:
         if not dados_relatorio:
             st.warning("Nenhum dado para gerar relatório. Informe pelo menos um valor positivo.")
         else:
-            # Função local para gerar PDF detalhado (similar ao anterior, com "Valor")
+            # Função local para gerar PDF detalhado (idêntica à anterior, mas com "Valor" no lugar de "Salário")
             class PDFDet(FPDF):
                 def header(self):
                     if self.page_no() == 1:
