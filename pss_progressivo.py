@@ -384,7 +384,7 @@ with st.sidebar:
     
     # Define a cor RGB baseada na seleção
     if tema_selecionado == "Salmão Claro":
-        cor_tema_rgb = (255, 224, 214)
+        cor_tema_rgb = (252, 179, 170)
     else:
         cor_tema_rgb = (235, 235, 235)
 
