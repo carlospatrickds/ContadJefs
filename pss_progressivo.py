@@ -252,31 +252,21 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
 
         # Cabeçalho com larguras ajustadas (total 195mm)
         pdf.set_font('Arial', 'B', 8)
-        
-        # Salva a margem esquerda original (geralmente é 10)
         margem_esquerda = pdf.get_x()
-        
         pdf.cell(15, 8, 'Ano', border=1)
         pdf.cell(30, 8, 'Valor Base 1', border=1)
         pdf.cell(30, 8, 'Valor Base 2', border=1)
         pdf.cell(30, 8, 'Contrib. Base 1', border=1) 
         pdf.cell(30, 8, 'Contrib. Base 2', border=1)
         
-        # 1. Salva as coordenadas atuais (X e Y) antes das células problemáticas
         x = pdf.get_x()
         y = pdf.get_y()
         
-        # 2. Usa multi_cell para permitir a quebra de linha (altura 4 por linha = 8 no total)
         pdf.multi_cell(28, 4, 'Diferença entre\nvalores_base', border=1, align='C')
-        
-        # 3. Restaura o cursor para o lado direito da célula anterior e imprime a última coluna
         pdf.set_xy(x + 28, y)
         pdf.multi_cell(32, 4, 'Diferença\nContribuição', border=1, align='C')
 
-        # ---------------------------------------------------------------------
-        # CORREÇÃO: Força o cursor a voltar para o começo e pular a linha inteira do cabeçalho
         pdf.set_xy(margem_esquerda, y + 8)
-        # ---------------------------------------------------------------------
 
         pdf.set_font('Arial', '', 8)
         
@@ -303,7 +293,6 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(28, 8, '-', border=1, align='C') # Retirada a soma da base
         pdf.cell(32, 8, formatar_moeda(total_diff_contrib), border=1)
         pdf.ln()
-
 
     # Observações após linha
     if observacao:
@@ -343,9 +332,10 @@ with tab1:
     col1, col2 = st.columns(2)
     with col1:
         ano_detalhe = st.selectbox("Selecione o ano", options=AVAILABLE_YEARS, key="detail_year")
+        # Alterado de value=10000.0 para value=0.0
         salario_detalhe = st.number_input(
             f"Valor (R$) – base de contribuição ({ano_detalhe})",
-            min_value=0.0, value=10000.0, step=100.0, format="%.2f", key="detail_salary")
+            min_value=0.0, value=0.0, step=100.0, format="%.2f", key="detail_salary")
     with col2:
         tabela = TABLES[ano_detalhe]
         total_contrib, detalhes = calcular_contribuicao_progressiva(salario_detalhe, tabela)
@@ -364,8 +354,9 @@ with tab2:
     st.subheader("📅 Informe os valores para cada ano (2020 a 2026)")
     valores_anuais = {}
     for ano in AVAILABLE_YEARS:
+        # Alterado de value=10000.0 para value=0.0
         valores_anuais[ano] = st.number_input(
-            f"Valor para {ano} (R$)", min_value=0.0, value=10000.0, step=100.0, format="%.2f", key=f"valor_{ano}")
+            f"Valor para {ano} (R$)", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"valor_{ano}")
 
     if st.button("📄 Gerar Relatório PDF Detalhado", key="gerar_pdf"):
         dados_relatorio = []
@@ -471,13 +462,15 @@ with tab3:
     with cols[0]:
         st.markdown("**Base 1 (Valor)**")
         for ano in AVAILABLE_YEARS:
+            # Alterado de value=10000.0 para value=0.0
             bases[f"base1_{ano}"] = st.number_input(
-                f"{ano} (R$)", min_value=0.0, value=10000.0, step=100.0, format="%.2f", key=f"comp_base1_{ano}")
+                f"{ano} (R$)", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"comp_base1_{ano}")
     with cols[1]:
         st.markdown("**Base 2 (Valor)**")
         for ano in AVAILABLE_YEARS:
+            # Alterado de value=10000.0 para value=0.0
             bases[f"base2_{ano}"] = st.number_input(
-                f"{ano} (R$)", min_value=0.0, value=10000.0, step=100.0, format="%.2f", key=f"comp_base2_{ano}")
+                f"{ano} (R$)", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"comp_base2_{ano}")
 
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
