@@ -344,7 +344,7 @@ with tab1:
         ano_detalhe = st.selectbox("Selecione o ano", options=AVAILABLE_YEARS, key="detail_year")
         salario_detalhe = st.number_input(
             f"Valor (R$) – base de contribuição ({ano_detalhe})",
-            min_value=0.0, value=10000.0, step=100.0, format="%.2f", key="detail_salary")
+            min_value=0.0, value=0.0, step=100.0, format="%.2f", key="detail_salary")
     with col2:
         tabela = TABLES[ano_detalhe]
         total_contrib, detalhes = calcular_contribuicao_progressiva(salario_detalhe, tabela)
@@ -364,7 +364,7 @@ with tab2:
     valores_anuais = {}
     for ano in AVAILABLE_YEARS:
         valores_anuais[ano] = st.number_input(
-            f"Valor para {ano} (R$)", min_value=0.0, value=10000.0, step=100.0, format="%.2f", key=f"valor_{ano}")
+            f"Valor para {ano} (R$)", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"valor_{ano}")
 
     if st.button("📄 Gerar Relatório PDF Detalhado", key="gerar_pdf"):
         dados_relatorio = []
@@ -471,12 +471,12 @@ with tab3:
         st.markdown("**Base 1 (Valor)**")
         for ano in AVAILABLE_YEARS:
             bases[f"base1_{ano}"] = st.number_input(
-                f"{ano} (R$)", min_value=0.0, value=10000.0, step=100.0, format="%.2f", key=f"comp_base1_{ano}")
+                f"{ano} (R$)", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"comp_base1_{ano}")
     with cols[1]:
         st.markdown("**Base 2 (Valor)**")
         for ano in AVAILABLE_YEARS:
             bases[f"base2_{ano}"] = st.number_input(
-                f"{ano} (R$)", min_value=0.0, value=10000.0, step=100.0, format="%.2f", key=f"comp_base2_{ano}")
+                f"{ano} (R$)", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"comp_base2_{ano}")
 
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
