@@ -12,7 +12,6 @@ def parse_valor(v_str):
     v_str = str(v_str).strip().replace('R$', '').strip()
     if not v_str:
         return 0.0
-    # Se houver vírgula, assume o padrão BR: tira os pontos e troca vírgula por ponto.
     if ',' in v_str:
         v_str = v_str.replace('.', '')
         v_str = v_str.replace(',', '.')
@@ -26,14 +25,13 @@ def sanitize_text(text):
     if not text:
         return ""
     replacements = {
-        '\u201c': '"', '\u201d': '"',  # aspas duplas inteligentes
-        '\u2018': "'", '\u2019': "'",  # aspas simples inteligentes
-        '\u2013': '-', '\u2014': '-',  # travessões
-        '\u2026': '...',               # reticências
+        '\u201c': '"', '\u201d': '"',
+        '\u2018': "'", '\u2019': "'",
+        '\u2013': '-', '\u2014': '-',
+        '\u2026': '...',
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
-    # Garante que nenhum outro caractere especial trave o PDF
     return text.encode('latin1', 'replace').decode('latin1')
 
 # -----------------------------------------------------------------------------
@@ -158,9 +156,13 @@ def formatar_moeda(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # -----------------------------------------------------------------------------
-# Geração de PDF comparativo com síntese e somatório
+# Classes FPDF Atualizadas para Receber a Cor
 # -----------------------------------------------------------------------------
-class PDF(FPDF):
+class PDF_Comparativo(FPDF):
+    def __init__(self, cor_tema, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cor_tema = cor_tema  # Armazena a cor escolhida pelo usuário (tupla RGB)
+
     def header(self):
         if self.page_no() == 1:
             self.set_font('Arial', 'B', 12)
@@ -168,8 +170,8 @@ class PDF(FPDF):
             self.ln(5)
             self.set_font('Arial', '', 10)
             
-            # Preenchimento Salmão Claro
-            self.set_fill_color(255, 224, 214) 
+            # Preenchimento dinâmico (Salmão ou Cinza)
+            self.set_fill_color(*self.cor_tema) 
             
             if 'processo' in st.session_state and st.session_state.processo:
                 proc = sanitize_text(st.session_state.processo)
@@ -185,8 +187,8 @@ class PDF(FPDF):
         self.set_font('Arial', 'I', 8)
         self.cell(0, 10, f'Página {self.page_no()}', align='C')
 
-def gerar_pdf_comparacao(dados_comparacao, observacao):
-    pdf = PDF()
+def gerar_pdf_comparacao(dados_comparacao, observacao, cor_tema):
+    pdf = PDF_Comparativo(cor_tema=cor_tema)
     pdf.add_page()
     pdf.set_font('Arial', 'B', 11)
     pdf.cell(0, 10, 'Relatório Comparativo PSS - RPPS', ln=True, align='C')
@@ -194,8 +196,8 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
 
     dados_sintese = []
     
-    # Preenchimento Salmão Claro
-    pdf.set_fill_color(255, 224, 214)
+    # Aplica a cor do tema para os cabeçalhos
+    pdf.set_fill_color(*cor_tema)
 
     for idx, ano_data in enumerate(dados_comparacao):
         ano = ano_data['ano']
@@ -210,7 +212,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
             pdf.add_page()
 
         pdf.set_font('Arial', 'B', 11)
-        # Título de Ano com fundo salmão
+        # Título de Ano com fundo na cor do tema
         pdf.cell(0, 10, f" Ano {ano}", ln=True, align='C', fill=True)
         pdf.ln(5)
 
@@ -296,9 +298,9 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(0, 10, 'Síntese Comparativa', ln=True, align='C')
         pdf.ln(5)
 
-        # Cabeçalho com fundo salmão
+        # Cabeçalho com fundo dinâmico
         pdf.set_font('Arial', 'B', 8)
-        pdf.set_fill_color(255, 224, 214)
+        pdf.set_fill_color(*cor_tema)
         margem_esquerda = pdf.get_x()
         pdf.cell(15, 8, 'Ano', border=1, fill=True)
         pdf.cell(30, 8, 'Valor Base 1', border=1, fill=True)
@@ -372,6 +374,19 @@ with st.sidebar:
     st.session_state.processo = st.text_input("Número do Processo", key="processo_input", value=st.session_state.processo)
     st.session_state.autor = st.text_input("Nome do Autor da Ação", key="autor_input", value=st.session_state.autor)
     observacao = st.text_area("Observações (opcional)", height=100)
+    
+    st.markdown("---")
+    st.header("🎨 Aparência do Relatório")
+    tema_selecionado = st.radio(
+        "Selecione a cor dos cabeçalhos do PDF:",
+        options=["Salmão Claro", "Cinza Clássico"]
+    )
+    
+    # Define a cor RGB baseada na seleção
+    if tema_selecionado == "Salmão Claro":
+        cor_tema_rgb = (255, 224, 214)
+    else:
+        cor_tema_rgb = (235, 235, 235)
 
 tab1, tab2, tab3 = st.tabs(["🔍 Cálculo Detalhado por Faixa", "📅 Relatório Anual (PDF Detalhado)", "⚖️ Comparação de Bases"])
 
@@ -426,13 +441,17 @@ with tab2:
             st.warning("Nenhum dado para gerar relatório. Informe pelo menos um valor positivo.")
         else:
             class PDFDet(FPDF):
+                def __init__(self, cor_tema, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.cor_tema = cor_tema
+
                 def header(self):
                     if self.page_no() == 1:
                         self.set_font('Arial', 'B', 12)
                         self.cell(0, 10, 'Relatório de Cálculo PSS - RPPS', ln=True, align='C')
                         self.ln(5)
                         self.set_font('Arial', '', 10)
-                        self.set_fill_color(255, 224, 214) # Salmão
+                        self.set_fill_color(*self.cor_tema)
                         if 'processo' in st.session_state and st.session_state.processo:
                             self.cell(0, 8, f" Processo: {sanitize_text(st.session_state.processo)}", ln=True, fill=True)
                             self.ln(1)
@@ -444,10 +463,10 @@ with tab2:
                     self.set_font('Arial', 'I', 8)
                     self.cell(0, 10, f'Página {self.page_no()}', align='C')
 
-            def gerar_pdf_detalhado(dados_anos, obs):
-                pdf = PDFDet()
+            def gerar_pdf_detalhado(dados_anos, obs, cor_tema):
+                pdf = PDFDet(cor_tema=cor_tema)
                 pdf.add_page()
-                pdf.set_fill_color(255, 224, 214) # Salmão
+                pdf.set_fill_color(*cor_tema) 
                 pdf.set_font('Arial', 'B', 11)
                 pdf.cell(0, 10, ' Resumo por Ano', ln=True, fill=True)
                 pdf.set_font('Arial', 'B', 10)
@@ -500,7 +519,7 @@ with tab2:
                     return out.encode('latin1')
                 return out
 
-            pdf_bytes = gerar_pdf_detalhado(dados_relatorio, observacao)
+            pdf_bytes = gerar_pdf_detalhado(dados_relatorio, observacao, cor_tema_rgb)
             b64 = base64.b64encode(pdf_bytes).decode()
             href = f'<a href="data:application/octet-stream;base64,{b64}" download="relatorio_pss_detalhado.pdf">📥 Clique aqui para baixar o relatório PDF</a>'
             st.markdown(href, unsafe_allow_html=True)
@@ -572,7 +591,8 @@ with tab3:
             if not dados_comparacao:
                 st.warning("Nenhum dado para gerar relatório. Informe pelo menos um valor positivo em algum ano.")
             else:
-                pdf_bytes = gerar_pdf_comparacao(dados_comparacao, observacao)
+                # Passa a cor do tema selecionada pelo usuário para a função
+                pdf_bytes = gerar_pdf_comparacao(dados_comparacao, observacao, cor_tema_rgb)
                 b64 = base64.b64encode(pdf_bytes).decode()
                 href = f'<a href="data:application/octet-stream;base64,{b64}" download="relatorio_comparativo_pss.pdf">📥 Clique aqui para baixar o relatório comparativo PDF</a>'
                 st.markdown(href, unsafe_allow_html=True)
