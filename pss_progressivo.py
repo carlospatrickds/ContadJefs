@@ -4,6 +4,39 @@ from fpdf import FPDF
 import base64
 
 # -----------------------------------------------------------------------------
+# Funções de Tratamento e Sanitização
+# -----------------------------------------------------------------------------
+
+def parse_valor(v_str):
+    """Permite colar valores no formato brasileiro (ex: 5.349,22) e converte para float."""
+    v_str = str(v_str).strip().replace('R$', '').strip()
+    if not v_str:
+        return 0.0
+    # Se houver vírgula, assume o padrão BR: tira os pontos e troca vírgula por ponto.
+    if ',' in v_str:
+        v_str = v_str.replace('.', '')
+        v_str = v_str.replace(',', '.')
+    try:
+        return float(v_str)
+    except ValueError:
+        return 0.0
+
+def sanitize_text(text):
+    """Remove 'aspas inteligentes' e outros caracteres que quebram o PDF (latin1)."""
+    if not text:
+        return ""
+    replacements = {
+        '\u201c': '"', '\u201d': '"',  # aspas duplas inteligentes
+        '\u2018': "'", '\u2019': "'",  # aspas simples inteligentes
+        '\u2013': '-', '\u2014': '-',  # travessões
+        '\u2026': '...',               # reticências
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    # Garante que nenhum outro caractere especial trave o PDF
+    return text.encode('latin1', 'replace').decode('latin1')
+
+# -----------------------------------------------------------------------------
 # Tabelas de contribuição do RPPS (Regime Próprio da União) – 2020 a 2026
 # -----------------------------------------------------------------------------
 
@@ -134,11 +167,18 @@ class PDF(FPDF):
             self.cell(0, 10, 'Relatório de Cálculo PSS - RPPS', ln=True, align='C')
             self.ln(5)
             self.set_font('Arial', '', 10)
+            
+            # Preenchimento Salmão Claro
+            self.set_fill_color(255, 224, 214) 
+            
             if 'processo' in st.session_state and st.session_state.processo:
-                self.cell(0, 6, f"Processo: {st.session_state.processo}", ln=True)
+                proc = sanitize_text(st.session_state.processo)
+                self.cell(0, 8, f" Processo: {proc}", ln=True, fill=True)
+                self.ln(1)
             if 'autor' in st.session_state and st.session_state.autor:
-                self.cell(0, 6, f"Autor: {st.session_state.autor}", ln=True)
-            self.ln(5)
+                aut = sanitize_text(st.session_state.autor)
+                self.cell(0, 8, f" Autor: {aut}", ln=True, fill=True)
+                self.ln(5)
 
     def footer(self):
         self.set_y(-15)
@@ -153,6 +193,9 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
     pdf.ln(5)
 
     dados_sintese = []
+    
+    # Preenchimento Salmão Claro
+    pdf.set_fill_color(255, 224, 214)
 
     for idx, ano_data in enumerate(dados_comparacao):
         ano = ano_data['ano']
@@ -167,18 +210,20 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
             pdf.add_page()
 
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, f"Ano {ano}", ln=True, align='C')
+        # Título de Ano com fundo salmão
+        pdf.cell(0, 10, f" Ano {ano}", ln=True, align='C', fill=True)
         pdf.ln(5)
 
         # Base 1
         pdf.set_font('Arial', 'B', 10)
-        pdf.cell(0, 8, f"Base 1 - Valor: {formatar_moeda(sal1)}", ln=True)
-        pdf.set_font('Arial', '', 9)
-        pdf.cell(50, 8, 'Faixa de Valor', border=1)
-        pdf.cell(40, 8, 'Base (R$)', border=1)
-        pdf.cell(30, 8, 'Alíquota', border=1)
-        pdf.cell(50, 8, 'Contribuição (R$)', border=1)
+        pdf.cell(0, 8, f" Base 1 - Valor: {formatar_moeda(sal1)}", ln=True)
+        pdf.set_font('Arial', 'B', 9)
+        pdf.cell(50, 8, 'Faixa de Valor', border=1, fill=True)
+        pdf.cell(40, 8, 'Base (R$)', border=1, fill=True)
+        pdf.cell(30, 8, 'Alíquota', border=1, fill=True)
+        pdf.cell(50, 8, 'Contribuição (R$)', border=1, fill=True)
         pdf.ln()
+        pdf.set_font('Arial', '', 9)
         for det in breakdown1:
             pdf.cell(50, 8, det['faixa'], border=1)
             pdf.cell(40, 8, formatar_moeda(det['base']), border=1)
@@ -192,13 +237,14 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
 
         # Base 2
         pdf.set_font('Arial', 'B', 10)
-        pdf.cell(0, 8, f"Base 2 - Valor: {formatar_moeda(sal2)}", ln=True)
-        pdf.set_font('Arial', '', 9)
-        pdf.cell(50, 8, 'Faixa de Valor', border=1)
-        pdf.cell(40, 8, 'Base (R$)', border=1)
-        pdf.cell(30, 8, 'Alíquota', border=1)
-        pdf.cell(50, 8, 'Contribuição (R$)', border=1)
+        pdf.cell(0, 8, f" Base 2 - Valor: {formatar_moeda(sal2)}", ln=True)
+        pdf.set_font('Arial', 'B', 9)
+        pdf.cell(50, 8, 'Faixa de Valor', border=1, fill=True)
+        pdf.cell(40, 8, 'Base (R$)', border=1, fill=True)
+        pdf.cell(30, 8, 'Alíquota', border=1, fill=True)
+        pdf.cell(50, 8, 'Contribuição (R$)', border=1, fill=True)
         pdf.ln()
+        pdf.set_font('Arial', '', 9)
         for det in breakdown2:
             pdf.cell(50, 8, det['faixa'], border=1)
             pdf.cell(40, 8, formatar_moeda(det['base']), border=1)
@@ -229,7 +275,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
 
         pdf.ln(5)
         pdf.set_font('Arial', 'I', 8)
-        pdf.cell(0, 6, f"Fonte: {PORTARIAS.get(ano, 'Portaria não especificada')}", ln=True)
+        pdf.cell(0, 6, f"Fonte: {sanitize_text(PORTARIAS.get(ano, 'Portaria não especificada'))}", ln=True)
         pdf.ln(10)
 
         dados_sintese.append({
@@ -243,28 +289,29 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
             "diff_contrib_raw": diff_contrib,
         })
 
-    # Página de síntese (Corrigida)
+    # Página de síntese
     if dados_sintese:
         pdf.add_page()
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(0, 10, 'Síntese Comparativa', ln=True, align='C')
         pdf.ln(5)
 
-        # Cabeçalho com larguras ajustadas (total 195mm)
+        # Cabeçalho com fundo salmão
         pdf.set_font('Arial', 'B', 8)
+        pdf.set_fill_color(255, 224, 214)
         margem_esquerda = pdf.get_x()
-        pdf.cell(15, 8, 'Ano', border=1)
-        pdf.cell(30, 8, 'Valor Base 1', border=1)
-        pdf.cell(30, 8, 'Valor Base 2', border=1)
-        pdf.cell(30, 8, 'Contrib. Base 1', border=1) 
-        pdf.cell(30, 8, 'Contrib. Base 2', border=1)
+        pdf.cell(15, 8, 'Ano', border=1, fill=True)
+        pdf.cell(30, 8, 'Valor Base 1', border=1, fill=True)
+        pdf.cell(30, 8, 'Valor Base 2', border=1, fill=True)
+        pdf.cell(30, 8, 'Contrib. Base 1', border=1, fill=True) 
+        pdf.cell(30, 8, 'Contrib. Base 2', border=1, fill=True)
         
         x = pdf.get_x()
         y = pdf.get_y()
         
-        pdf.multi_cell(28, 4, 'Diferença entre\nvalores_base', border=1, align='C')
+        pdf.multi_cell(28, 4, 'Diferença entre\nvalores_base', border=1, align='C', fill=True)
         pdf.set_xy(x + 28, y)
-        pdf.multi_cell(32, 4, 'Diferença\nContribuição', border=1, align='C')
+        pdf.multi_cell(32, 4, 'Diferença\nContribuição', border=1, align='C', fill=True)
 
         pdf.set_xy(margem_esquerda, y + 8)
 
@@ -283,19 +330,20 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
             pdf.ln()
             total_diff_contrib += linha['diff_contrib_raw']
 
-        # Linha de total (Somando apenas a diferença de contribuição)
+        # Linha de total
         pdf.set_font('Arial', 'B', 8)
         pdf.cell(15, 8, 'Total', border=1)
         pdf.cell(30, 8, '', border=1)
         pdf.cell(30, 8, '', border=1)
         pdf.cell(30, 8, '', border=1)
         pdf.cell(30, 8, '', border=1)
-        pdf.cell(28, 8, '-', border=1, align='C') # Retirada a soma da base
+        pdf.cell(28, 8, '-', border=1, align='C')
         pdf.cell(32, 8, formatar_moeda(total_diff_contrib), border=1)
         pdf.ln()
 
-    # Observações após linha
+    # Observações tratadas com sanitização
     if observacao:
+        obs_sanitizada = sanitize_text(observacao)
         pdf.ln(5)
         pdf.set_draw_color(0, 0, 0)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -303,7 +351,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(0, 10, 'Observações:', ln=True)
         pdf.set_font('Arial', '', 10)
-        pdf.multi_cell(0, 6, observacao)
+        pdf.multi_cell(0, 6, obs_sanitizada)
 
     out = pdf.output(dest='S')
     if isinstance(out, str):
@@ -332,16 +380,18 @@ with tab1:
     col1, col2 = st.columns(2)
     with col1:
         ano_detalhe = st.selectbox("Selecione o ano", options=AVAILABLE_YEARS, key="detail_year")
-        # Alterado de value=10000.0 para value=0.0
-        salario_detalhe = st.number_input(
+        salario_detalhe_str = st.text_input(
             f"Valor (R$) – base de contribuição ({ano_detalhe})",
-            min_value=0.0, value=0.0, step=100.0, format="%.2f", key="detail_salary")
+            value="0,00", key="detail_salary")
+        salario_detalhe = parse_valor(salario_detalhe_str)
+        
     with col2:
         tabela = TABLES[ano_detalhe]
         total_contrib, detalhes = calcular_contribuicao_progressiva(salario_detalhe, tabela)
         aliquota_efetiva = (total_contrib / salario_detalhe * 100) if salario_detalhe > 0 else 0.0
         st.metric("Total Contribuição", formatar_moeda(total_contrib))
         st.metric("Alíquota Efetiva", f"{aliquota_efetiva:.2f}%")
+        
     if detalhes:
         st.subheader("Detalhamento por Faixa")
         df_detalhe = pd.DataFrame(detalhes)
@@ -354,9 +404,8 @@ with tab2:
     st.subheader("📅 Informe os valores para cada ano (2020 a 2026)")
     valores_anuais = {}
     for ano in AVAILABLE_YEARS:
-        # Alterado de value=10000.0 para value=0.0
-        valores_anuais[ano] = st.number_input(
-            f"Valor para {ano} (R$)", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"valor_{ano}")
+        val_str = st.text_input(f"Valor para {ano} (R$)", value="0,00", key=f"valor_{ano}")
+        valores_anuais[ano] = parse_valor(val_str)
 
     if st.button("📄 Gerar Relatório PDF Detalhado", key="gerar_pdf"):
         dados_relatorio = []
@@ -383,11 +432,13 @@ with tab2:
                         self.cell(0, 10, 'Relatório de Cálculo PSS - RPPS', ln=True, align='C')
                         self.ln(5)
                         self.set_font('Arial', '', 10)
+                        self.set_fill_color(255, 224, 214) # Salmão
                         if 'processo' in st.session_state and st.session_state.processo:
-                            self.cell(0, 6, f"Processo: {st.session_state.processo}", ln=True)
+                            self.cell(0, 8, f" Processo: {sanitize_text(st.session_state.processo)}", ln=True, fill=True)
+                            self.ln(1)
                         if 'autor' in st.session_state and st.session_state.autor:
-                            self.cell(0, 6, f"Autor: {st.session_state.autor}", ln=True)
-                        self.ln(5)
+                            self.cell(0, 8, f" Autor: {sanitize_text(st.session_state.autor)}", ln=True, fill=True)
+                            self.ln(5)
                 def footer(self):
                     self.set_y(-15)
                     self.set_font('Arial', 'I', 8)
@@ -396,14 +447,16 @@ with tab2:
             def gerar_pdf_detalhado(dados_anos, obs):
                 pdf = PDFDet()
                 pdf.add_page()
+                pdf.set_fill_color(255, 224, 214) # Salmão
                 pdf.set_font('Arial', 'B', 11)
-                pdf.cell(0, 10, 'Resumo por Ano', ln=True)
-                pdf.set_font('Arial', '', 10)
-                pdf.cell(30, 8, 'Ano', border=1)
-                pdf.cell(50, 8, 'Valor (R$)', border=1)
-                pdf.cell(60, 8, 'Contribuição Total (R$)', border=1)
-                pdf.cell(40, 8, 'Alíquota Efetiva', border=1)
+                pdf.cell(0, 10, ' Resumo por Ano', ln=True, fill=True)
+                pdf.set_font('Arial', 'B', 10)
+                pdf.cell(30, 8, 'Ano', border=1, fill=True)
+                pdf.cell(50, 8, 'Valor (R$)', border=1, fill=True)
+                pdf.cell(60, 8, 'Contribuição Total (R$)', border=1, fill=True)
+                pdf.cell(40, 8, 'Alíquota Efetiva', border=1, fill=True)
                 pdf.ln()
+                pdf.set_font('Arial', '', 10)
                 for linha in dados_anos:
                     pdf.cell(30, 8, str(linha['ano']), border=1)
                     pdf.cell(50, 8, linha['valor'], border=1)
@@ -415,13 +468,14 @@ with tab2:
                         continue
                     pdf.add_page()
                     pdf.set_font('Arial', 'B', 11)
-                    pdf.cell(0, 10, f"Detalhamento Progressivo - Ano {linha['ano']}", ln=True)
-                    pdf.set_font('Arial', '', 10)
-                    pdf.cell(60, 8, 'Faixa de Valor', border=1)
-                    pdf.cell(50, 8, 'Base (R$)', border=1)
-                    pdf.cell(40, 8, 'Alíquota', border=1)
-                    pdf.cell(50, 8, 'Contribuição (R$)', border=1)
+                    pdf.cell(0, 10, f" Detalhamento Progressivo - Ano {linha['ano']}", ln=True, fill=True)
+                    pdf.set_font('Arial', 'B', 10)
+                    pdf.cell(60, 8, 'Faixa de Valor', border=1, fill=True)
+                    pdf.cell(50, 8, 'Base (R$)', border=1, fill=True)
+                    pdf.cell(40, 8, 'Alíquota', border=1, fill=True)
+                    pdf.cell(50, 8, 'Contribuição (R$)', border=1, fill=True)
                     pdf.ln()
+                    pdf.set_font('Arial', '', 10)
                     for det in linha['detalhes']:
                         pdf.cell(60, 8, det['faixa'], border=1)
                         pdf.cell(50, 8, formatar_moeda(det['base']), border=1)
@@ -434,13 +488,13 @@ with tab2:
                     pdf.set_font('Arial', '', 10)
                     pdf.ln(5)
                     pdf.set_font('Arial', 'I', 8)
-                    pdf.cell(0, 6, f"Fonte: {PORTARIAS.get(linha['ano'], 'Portaria não especificada')}", ln=True)
+                    pdf.cell(0, 6, f"Fonte: {sanitize_text(PORTARIAS.get(linha['ano'], 'Portaria não especificada'))}", ln=True)
                 if obs:
                     pdf.add_page()
                     pdf.set_font('Arial', 'B', 11)
                     pdf.cell(0, 10, 'Observações:', ln=True)
                     pdf.set_font('Arial', '', 10)
-                    pdf.multi_cell(0, 6, obs)
+                    pdf.multi_cell(0, 6, sanitize_text(obs))
                 out = pdf.output(dest='S')
                 if isinstance(out, str):
                     return out.encode('latin1')
@@ -462,15 +516,13 @@ with tab3:
     with cols[0]:
         st.markdown("**Base 1 (Valor)**")
         for ano in AVAILABLE_YEARS:
-            # Alterado de value=10000.0 para value=0.0
-            bases[f"base1_{ano}"] = st.number_input(
-                f"{ano} (R$)", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"comp_base1_{ano}")
+            val_str = st.text_input(f"{ano} (R$)", value="0,00", key=f"comp_base1_{ano}")
+            bases[f"base1_{ano}"] = parse_valor(val_str)
     with cols[1]:
         st.markdown("**Base 2 (Valor)**")
         for ano in AVAILABLE_YEARS:
-            # Alterado de value=10000.0 para value=0.0
-            bases[f"base2_{ano}"] = st.number_input(
-                f"{ano} (R$)", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"comp_base2_{ano}")
+            val_str = st.text_input(f"{ano} (R$)", value="0,00", key=f"comp_base2_{ano}")
+            bases[f"base2_{ano}"] = parse_valor(val_str)
 
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
