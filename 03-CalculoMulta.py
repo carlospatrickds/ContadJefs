@@ -403,7 +403,7 @@ def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, fonte
         pdf.set_font("Arial", "I", 8)
         pdf.cell(
             0, 6,
-            "Nota: A correção foi realizada com base na taxa SELIC acumulada, conforme fatores disponíveis no site do Banco Central do Brasil",
+            "Nota: A correção foi realizada com base na taxa SELIC acumulada, conforme fatores disponíveis no site do CJF.",
             ln=True
         )
 
@@ -677,8 +677,8 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
     data_atualizacao = st.date_input("Data de atualização", value=date.today(), format="DD/MM/YYYY")
 
     st.markdown("### 🔗 Acesso rápido ao site do Banco Central")
-    if st.button("Abrir site do BC"):
-        js = "window.open('https://www.bcb.gov.br/estabilidadefinanceira/selicfatoresacumulados')"
+    if st.button("Abrir site do CJF"):
+        js = "window.open('https://sicom.cjf.jus.br/tabelaCorMor.php')"
         st.components.v1.html(f"<script>{js}</script>", height=0, width=0)
 
     totais_mensais = defaultdict(float)
