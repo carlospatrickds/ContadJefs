@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Leitor Processual — Gemini Edition</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --panel: #13161e;
+    --border: #232735;
+    --accent: #4f7cff;
+    --accent2: #00d4aa;
+    --warn: #ffb340;
+    --danger: #ff4f6a;
+    --text: #d8dce8;
+    --muted: #60657a;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--panel);
+  }
+
+  .logo-mark {
+    width: 36px; height: 36px;
+    background: #4285F4; /* Google Blue */
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 14px;
+    color: #fff;
+    border-radius: 4px;
+  }
+
+  header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #fff;
+  }
+
+  header span {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-left: 4px;
+  }
+
+  .badge {
+    margin-left: auto;
+    background: rgba(66, 133, 244, 0.1);
+    border: 1px solid rgba(66, 133, 244, 0.3);
+    color: #8ab4f8;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 2px;
+  }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 0;
+    height: calc(100vh - 61px);
+  }
+
+  .left-panel {
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 20px 24px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .field-group {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  input[type="password"], input[type="text"] {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 12px;
+    border-radius: 3px;
+    outline: none;
+    width: 100%;
+  }
+
+  input:focus { border-color: var(--accent); }
+
+  .upload-zone {
+    margin: 18px 24px 0;
+    border: 1.5px dashed var(--border);
+    border-radius: 4px;
+    padding: 28px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    text-align: center;
+  }
+
+  .upload-zone:hover { border-color: var(--accent); background: rgba(79,124,255,0.04); }
+  .upload-zone input { display: none; }
+
+  .file-info {
+    display: none;
+    margin: 10px 24px 0;
+    background: rgba(0,212,170,0.06);
+    border: 1px solid rgba(0,212,170,0.2);
+    padding: 10px 14px;
+    border-radius: 3px;
+  }
+
+  .file-info.visible { display: flex; justify-content: space-between; align-items: center; }
+
+  textarea {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 12px;
+    width: 100%;
+    min-height: 200px;
+    resize: vertical;
+    outline: none;
+  }
+
+  .run-btn {
+    margin: 18px 24px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 13px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 3px;
+  }
+
+  .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .right-panel { display: flex; flex-direction: column; overflow: hidden; }
+
+  .output-toolbar {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 28px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--panel);
+  }
+
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status-dot.active { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+
+  .output-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px;
+    font-family: var(--mono);
+    line-height: 1.7;
+  }
+
+  .output-content h2 { color: var(--accent); font-size: 12px; margin: 25px 0 10px; border-bottom: 1px solid rgba(79,124,255,0.2); text-transform: uppercase; }
+  .output-content strong { color: var(--accent2); }
+  .block-id { background: rgba(79,124,255,0.1); color: var(--accent); padding: 1px 4px; border-radius: 2px; font-size: 10px; margin: 0 2px; border: 1px solid rgba(79,124,255,0.2); }
+
+  .loading-bar { display: none; height: 2px; background: var(--accent); width: 0; transition: width 0.3s; }
+  .loading-bar.active { display: block; animation: loading 2s infinite linear; }
+  @keyframes loading { 0% { opacity: 0.3; width: 0; } 50% { opacity: 1; width: 50%; } 100% { opacity: 0.3; width: 100%; } }
+
+  .copy-btn { margin-left: auto; background: none; border: 1px solid var(--border); color: var(--muted); padding: 5px 12px; cursor: pointer; font-family: var(--mono); font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">G</div>
+  <h1>Leitor Processual</h1>
+  <span>// Gemini AI Studio</span>
+  <div class="badge">API GEMINI 1.5 FLASH</div>
+</header>
+
+<main>
+  <div class="left-panel">
+    <div class="section-label">⚙ Configuração</div>
+    <div class="field-group">
+      <label>Chave de API Gemini</label>
+      <input type="password" id="apiKey" placeholder="AIzaSy..." />
+    </div>
+
+    <div class="section-label">📄 Processo (PDF)</div>
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" accept=".pdf" />
+      <p><strong>Arraste o PDF aqui</strong><br/>Extração local via PDF.js</p>
+    </div>
+
+    <div class="file-info" id="fileInfo">
+      <span id="fileName" style="font-size:11px; color:var(--accent2)"></span>
+      <button id="removeFile" style="background:none; border:none; color:var(--danger); cursor:pointer">✕</button>
+    </div>
+
+    <div class="section-label">📝 Prompt</div>
+    <div class="field-group">
+      <textarea id="systemPrompt">Você é um AGENTE LEITOR PROCESSUAL para Contadoria Judicial. Sua função é analisar um PDF de processo judicial, identificar os documentos relevantes e organizar as informações com base documental explícita, citando IDs/Nums.
+
+REGRAS:
+1. Nunca use nomenclaturas previdenciárias (DIB, DIP, DCB).
+2. Use: DAJ (Ajuizamento), MIE (Início Diferenças), MEX (Exigibilidade), DBC (Data-Base Cálculo).
+3. Cite ID/Num para cada valor ou data.
+4. Se não constar, diga "não consta".
+
+FORMATO DE SAÍDA:
+## 1. Fase Processual Identificada
+## 2. Decisão/Despacho Remetido à Contadoria
+## 3. Decisões a Cumprir
+## 4. Síntese da Inicial e Sentença
+## 5. DAJ · MIE · MEX · DBC
+## 6. Índices de Correção e Juros
+## 7. Pagamentos e Depósitos
+## 8. Impugnações e Divergências
+## 9. Pontos que Não Constam</textarea>
+    </div>
+
+    <button class="run-btn" id="runBtn" disabled>Analisar com Gemini</button>
+  </div>
+
+  <div class="right-panel">
+    <div class="output-toolbar">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText" style="font-size:11px; color:var(--muted)">Aguardando...</span>
+      <button class="copy-btn" id="copyBtn" style="display:none">Copiar</button>
+    </div>
+    <div class="loading-bar" id="loadingBar"></div>
+    <div class="output-area" id="outputArea">
+      <div style="text-align:center; margin-top:100px; color:var(--muted)">
+        <p>Insira a chave API e o arquivo PDF para começar.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  let extractedText = '';
+  const apiKeyInput = document.getElementById('apiKey');
+  const fileInput = document.getElementById('fileInput');
+  const runBtn = document.getElementById('runBtn');
+  const outputArea = document.getElementById('outputArea');
+
+  // Handle PDF
+  document.getElementById('uploadZone').onclick = () => fileInput.click();
+  fileInput.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileInfo').classList.add('visible');
+    
+    setStatus('active', 'Extraindo texto do PDF...');
+    try {
+      extractedText = await extractText(file);
+      setStatus('ready', 'PDF pronto para análise');
+      checkReady();
+    } catch (err) {
+      alert('Erro ao ler PDF');
+    }
+  };
+
+  document.getElementById('removeFile').onclick = () => {
+    extractedText = '';
+    fileInput.value = '';
+    document.getElementById('fileInfo').classList.remove('visible');
+    checkReady();
+  };
+
+  apiKeyInput.oninput = checkReady;
+
+  function checkReady() {
+    runBtn.disabled = !(apiKeyInput.value.length > 10 && extractedText.length > 0);
+  }
+
+  async function extractText(file) {
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data: buffer}).promise;
+    let fullText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      fullText += content.items.map(s => s.str).join(' ') + '\n';
+    }
+    return fullText;
+  }
+
+  function setStatus(cls, txt) {
+    document.getElementById('statusDot').className = 'status-dot ' + cls;
+    document.getElementById('statusText').textContent = txt;
+  }
+
+  // API Call
+  runBtn.onclick = async () => {
+    const key = apiKeyInput.value.trim();
+    const sys = document.getElementById('systemPrompt').value;
+    
+    runBtn.disabled = true;
+    setStatus('active', 'Gemini está analisando...');
+    document.getElementById('loadingBar').classList.add('active');
+    outputArea.innerHTML = '<p style="color:var(--warn)">Processando tokens... Isso pode levar alguns segundos.</p>';
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+    
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${sys}\n\nANALIZE ESTE PROCESSO:\n${extractedText}` }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 8192 }
+        })
+      });
+
+      const data = await response.json();
+      const result = data.candidates[0].content.parts[0].text;
+      
+      renderResult(result);
+      setStatus('ready', 'Concluído');
+      document.getElementById('copyBtn').style.display = 'block';
+      document.getElementById('copyBtn').onclick = () => navigator.clipboard.writeText(result);
+    } catch (err) {
+      outputArea.innerHTML = '<p style="color:var(--danger)">Erro: Verifique sua chave API ou conexão.</p>';
+      setStatus('', 'Erro');
+    } finally {
+      runBtn.disabled = false;
+      document.getElementById('loadingBar').classList.remove('active');
+    }
+  };
+
+  function renderResult(text) {
+    let html = text
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br/>')
+      .replace(/\b(ID|Num\.?|#)\s*(\d+)/gi, '<span class="block-id">$1 $2</span>');
+    
+    outputArea.innerHTML = `<div class="output-content">${html}</div>`;
+  }
+</script>
+</body>
+</html>
