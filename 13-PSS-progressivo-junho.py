@@ -50,7 +50,6 @@ THEMES = {
 # -----------------------------------------------------------------------------
 # Funções de Tratamento e Sanitização
 # -----------------------------------------------------------------------------
-
 def parse_valor(v_str):
     v_str = str(v_str).strip().replace('R$', '').strip()
     if not v_str:
@@ -79,43 +78,14 @@ def sanitize_text(text):
 # -----------------------------------------------------------------------------
 # Tabelas de contribuição do RPPS – 2020 a 2026
 # -----------------------------------------------------------------------------
-
 TABLES = {
-    2020: [
-        (0.00, 1045.00, 0.075), (1045.01, 2000.00, 0.09), (2000.01, 3000.00, 0.12),
-        (3000.01, 5839.45, 0.14), (5839.46, 10000.00, 0.145), (10000.01, 20000.00, 0.165),
-        (20000.01, 39000.00, 0.19), (39000.01, float('inf'), 0.22),
-    ],
-    2021: [
-        (0.00, 1100.00, 0.075), (1100.01, 2203.48, 0.09), (2203.49, 3305.22, 0.12),
-        (3305.23, 6433.57, 0.14), (6433.58, 11017.42, 0.145), (11017.43, 22034.83, 0.165),
-        (22034.84, 42967.92, 0.19), (42967.93, float('inf'), 0.22),
-    ],
-    2022: [
-        (0.00, 1212.00, 0.075), (1212.01, 2427.35, 0.09), (2427.36, 3641.03, 0.12),
-        (3641.04, 7087.22, 0.14), (7087.23, 12136.79, 0.145), (12136.80, 24273.57, 0.165),
-        (24273.58, 47333.46, 0.19), (47333.47, float('inf'), 0.22),
-    ],
-    2023: [
-        (0.00, 1302.00, 0.075), (1302.01, 2571.29, 0.09), (2571.30, 3856.94, 0.12),
-        (3856.95, 7507.49, 0.14), (7507.50, 12856.50, 0.145), (12856.51, 25712.99, 0.165),
-        (25713.00, 50140.33, 0.19), (50140.34, float('inf'), 0.22),
-    ],
-    2024: [
-        (0.00, 1412.00, 0.075), (1412.01, 2666.68, 0.09), (2666.69, 4000.03, 0.12),
-        (4000.04, 7786.02, 0.14), (7786.03, 13333.48, 0.145), (13333.49, 26666.94, 0.165),
-        (26666.95, 52000.54, 0.19), (52000.55, float('inf'), 0.22),
-    ],
-    2025: [
-        (0.00, 1518.00, 0.075), (1518.01, 2793.88, 0.09), (2793.89, 4190.83, 0.12),
-        (4190.84, 8157.41, 0.14), (8157.42, 13969.49, 0.145), (13969.50, 27938.95, 0.165),
-        (27938.96, 54480.97, 0.19), (54480.98, float('inf'), 0.22),
-    ],
-    2026: [
-        (0.00, 1621.00, 0.075), (1621.01, 2902.84, 0.09), (2902.85, 4354.27, 0.12),
-        (4354.28, 8475.55, 0.14), (8475.56, 14514.30, 0.145), (14514.31, 29028.57, 0.165),
-        (29028.58, 56605.73, 0.19), (56605.74, float('inf'), 0.22),
-    ],
+    2020: [(0.00, 1045.00, 0.075), (1045.01, 2000.00, 0.09), (2000.01, 3000.00, 0.12), (3000.01, 5839.45, 0.14), (5839.46, 10000.00, 0.145), (10000.01, 20000.00, 0.165), (20000.01, 39000.00, 0.19), (39000.01, float('inf'), 0.22)],
+    2021: [(0.00, 1100.00, 0.075), (1100.01, 2203.48, 0.09), (2203.49, 3305.22, 0.12), (3305.23, 6433.57, 0.14), (6433.58, 11017.42, 0.145), (11017.43, 22034.83, 0.165), (22034.84, 42967.92, 0.19), (42967.93, float('inf'), 0.22)],
+    2022: [(0.00, 1212.00, 0.075), (1212.01, 2427.35, 0.09), (2427.36, 3641.03, 0.12), (3641.04, 7087.22, 0.14), (7087.23, 12136.79, 0.145), (12136.80, 24273.57, 0.165), (24273.58, 47333.46, 0.19), (47333.47, float('inf'), 0.22)],
+    2023: [(0.00, 1302.00, 0.075), (1302.01, 2571.29, 0.09), (2571.30, 3856.94, 0.12), (3856.95, 7507.49, 0.14), (7507.50, 12856.50, 0.145), (12856.51, 25712.99, 0.165), (25713.00, 50140.33, 0.19), (50140.34, float('inf'), 0.22)],
+    2024: [(0.00, 1412.00, 0.075), (1412.01, 2666.68, 0.09), (2666.69, 4000.03, 0.12), (4000.04, 7786.02, 0.14), (7786.03, 13333.48, 0.145), (13333.49, 26666.94, 0.165), (26666.95, 52000.54, 0.19), (52000.55, float('inf'), 0.22)],
+    2025: [(0.00, 1518.00, 0.075), (1518.01, 2793.88, 0.09), (2793.89, 4190.83, 0.12), (4190.84, 8157.41, 0.14), (8157.42, 13969.49, 0.145), (13969.50, 27938.95, 0.165), (27938.96, 54480.97, 0.19), (54480.98, float('inf'), 0.22)],
+    2026: [(0.00, 1621.00, 0.075), (1621.01, 2902.84, 0.09), (2902.85, 4354.27, 0.12), (4354.28, 8475.55, 0.14), (8475.56, 14514.30, 0.145), (14514.31, 29028.57, 0.165), (29028.58, 56605.73, 0.19), (56605.74, float('inf'), 0.22)],
 }
 
 PORTARIAS = {
@@ -130,23 +100,33 @@ PORTARIAS = {
 
 AVAILABLE_YEARS = sorted(TABLES.keys())
 
+# -----------------------------------------------------------------------------
+# Inicialização do Session State (Necessário para a Importação funcionar)
+# -----------------------------------------------------------------------------
+if 'processo_input' not in st.session_state: st.session_state.processo_input = ""
+if 'autor_input' not in st.session_state: st.session_state.autor_input = ""
+if 'observacao_input' not in st.session_state: st.session_state.observacao_input = ""
+
+for ano in AVAILABLE_YEARS:
+    if f"valor_{ano}" not in st.session_state: st.session_state[f"valor_{ano}"] = "0,00"
+    if f"comp_base1_{ano}" not in st.session_state: st.session_state[f"comp_base1_{ano}"] = "0,00"
+    if f"comp_base2_{ano}" not in st.session_state: st.session_state[f"comp_base2_{ano}"] = "0,00"
+
+# -----------------------------------------------------------------------------
+# Lógica de Cálculo Principal
+# -----------------------------------------------------------------------------
 def calcular_contribuicao_progressiva(salario, tabela):
-    if salario <= 0:
-        return 0.0, []
+    if salario <= 0: return 0.0, []
     restante = salario
     total = 0.0
     detalhamento = []
     for i, (lim_inf, lim_sup, aliquota) in enumerate(tabela):
-        if restante <= 0:
-            break
+        if restante <= 0: break
         if i == 0:
             tributavel = min(restante, lim_sup)
         else:
-            if lim_sup == float('inf'):
-                tributavel = restante
-            else:
-                largura_faixa = lim_sup - lim_inf
-                tributavel = min(restante, largura_faixa)
+            if lim_sup == float('inf'): tributavel = restante
+            else: tributavel = min(restante, lim_sup - lim_inf)
         if tributavel > 0:
             contrib = tributavel * aliquota
             total += contrib
@@ -163,11 +143,10 @@ def formatar_moeda(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # -----------------------------------------------------------------------------
-# Interface Streamlit (Início)
+# Interface Streamlit (Configuração e Barra Lateral)
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="Calculadora PSS - RPPS", layout="wide")
 
-# Configuração da Barra Lateral (Sidebar)
 with st.sidebar:
     st.header("🎨 Tema Visual")
     tema_selecionado = st.radio("Escolha o esquema de cores:", ["Salmão", "Clássico (Azul/Cinza)"])
@@ -175,18 +154,97 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # IMPORTAÇÃO DE DADOS -----------------------------------------------------
+    st.header("📂 Importar Dados")
+    arquivo_importado = st.file_uploader("Carregar arquivo .json", type=["json"])
+    if arquivo_importado is not None:
+        if st.button("Restaurar Dados"):
+            try:
+                dados_json = json.load(arquivo_importado)
+                
+                # Restaurar Informações do Processo
+                info = dados_json.get("informacoes_processo", {})
+                st.session_state.processo_input = info.get("processo", "")
+                st.session_state.autor_input = info.get("autor", "")
+                st.session_state.observacao_input = info.get("observacoes", "")
+                
+                # Restaurar Valores Relatório Anual (Tab 2)
+                val_anuais = dados_json.get("valores_relatorio_anual", {})
+                for ano, valor in val_anuais.items():
+                    if f"valor_{ano}" in st.session_state:
+                        st.session_state[f"valor_{ano}"] = valor
+                        
+                # Restaurar Valores Comparação (Tab 3)
+                val_comp = dados_json.get("valores_comparacao", {})
+                base1 = val_comp.get("base_1", {})
+                base2 = val_comp.get("base_2", {})
+                
+                for ano, valor in base1.items():
+                    if f"comp_base1_{ano}" in st.session_state:
+                        st.session_state[f"comp_base1_{ano}"] = valor
+                for ano, valor in base2.items():
+                    if f"comp_base2_{ano}" in st.session_state:
+                        st.session_state[f"comp_base2_{ano}"] = valor
+                        
+                st.success("Dados restaurados com sucesso!")
+                st.rerun() # Atualiza a tela instantaneamente com os novos dados
+            except Exception as e:
+                st.error(f"Erro ao ler o arquivo: {e}")
+                
+    st.markdown("---")
+    
+    # INFORMAÇÕES DO PROCESSO -------------------------------------------------
     st.header("Informações do Processo")
-    if 'processo' not in st.session_state: st.session_state.processo = ""
-    if 'autor' not in st.session_state: st.session_state.autor = ""
-    st.session_state.processo = st.text_input("Número do Processo", key="processo_input", value=st.session_state.processo)
-    st.session_state.autor = st.text_input("Nome do Autor da Ação", key="autor_input", value=st.session_state.autor)
-    observacao = st.text_area("Observações (opcional)", height=100)
+    st.text_input("Número do Processo", key="processo_input")
+    st.text_input("Nome do Autor da Ação", key="autor_input")
+    st.text_area("Observações (opcional)", height=100, key="observacao_input")
 
-# Injetar o CSS dinâmico baseado no tema escolhido
+    # EXPORTAÇÃO DE DADOS -----------------------------------------------------
+    st.markdown("---")
+    st.header("💾 Exportar Dados")
+    
+    # Extração dos 2 primeiros nomes do Autor para o nome do arquivo
+    autor_raw = st.session_state.autor_input.strip()
+    if autor_raw:
+        partes_nome = autor_raw.split()
+        dois_primeiros_nomes = " ".join(partes_nome[:2]).upper()
+    else:
+        dois_primeiros_nomes = "SEM_NOME"
+        
+    timestamp = datetime.now().strftime("%d%m%Y%H%M%S")
+    nome_arquivo_json = f"CALC_PSS_OS {dois_primeiros_nomes} {timestamp}.json"
+    
+    dados_para_exportar = {
+        "informacoes_processo": {
+            "processo": st.session_state.processo_input,
+            "autor": st.session_state.autor_input,
+            "observacoes": st.session_state.observacao_input
+        },
+        "valores_relatorio_anual": {
+            str(ano): st.session_state[f"valor_{ano}"] for ano in AVAILABLE_YEARS
+        },
+        "valores_comparacao": {
+            "base_1": {str(ano): st.session_state[f"comp_base1_{ano}"] for ano in AVAILABLE_YEARS},
+            "base_2": {str(ano): st.session_state[f"comp_base2_{ano}"] for ano in AVAILABLE_YEARS}
+        }
+    }
+    
+    json_string = json.dumps(dados_para_exportar, ensure_ascii=False, indent=4)
+    
+    st.download_button(
+        label="📥 Baixar arquivo .json",
+        data=json_string,
+        file_name=nome_arquivo_json,
+        mime="application/json",
+        use_container_width=True
+    )
+
+# Injetar o CSS dinâmico
 st.markdown(tema_ativo["css"], unsafe_allow_html=True)
 
+
 # -----------------------------------------------------------------------------
-# Geração de PDF comparativo e detalhado dinâmico
+# Classes e Funções de Geração de PDF 
 # -----------------------------------------------------------------------------
 class PDFComp(FPDF):
     def header(self):
@@ -197,12 +255,12 @@ class PDFComp(FPDF):
             self.set_font('Arial', '', 10)
             if hasattr(self, 'theme_colors'):
                 self.set_fill_color(*self.theme_colors["header_bg"]) 
-            if 'processo' in st.session_state and st.session_state.processo:
-                proc = sanitize_text(st.session_state.processo)
+            if st.session_state.processo_input:
+                proc = sanitize_text(st.session_state.processo_input)
                 self.cell(0, 8, f" Processo: {proc}", ln=True, fill=True)
                 self.ln(1)
-            if 'autor' in st.session_state and st.session_state.autor:
-                aut = sanitize_text(st.session_state.autor)
+            if st.session_state.autor_input:
+                aut = sanitize_text(st.session_state.autor_input)
                 self.cell(0, 8, f" Autor: {aut}", ln=True, fill=True)
                 self.ln(5)
 
@@ -211,7 +269,7 @@ class PDFComp(FPDF):
         self.set_font('Arial', 'I', 8)
         self.cell(0, 10, f'Página {self.page_no()}', align='C')
 
-def gerar_pdf_comparacao(dados_comparacao, observacao, tema):
+def gerar_pdf_comparacao(dados_comparacao, observacao_texto, tema):
     pdf = PDFComp()
     pdf.theme_colors = tema
     pdf.add_page()
@@ -228,8 +286,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao, tema):
         breakdown1 = ano_data['breakdown1']
         breakdown2 = ano_data['breakdown2']
 
-        if idx > 0:
-            pdf.add_page()
+        if idx > 0: pdf.add_page()
 
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(0, 10, f" Ano {ano}", ln=True, align='C', fill=True)
@@ -351,8 +408,8 @@ def gerar_pdf_comparacao(dados_comparacao, observacao, tema):
         pdf.cell(32, 8, formatar_moeda(total_diff_contrib), border=1)
         pdf.ln()
 
-    if observacao:
-        obs_sanitizada = sanitize_text(observacao)
+    if observacao_texto:
+        obs_sanitizada = sanitize_text(observacao_texto)
         pdf.ln(5)
         pdf.set_draw_color(*tema["divider"])
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -366,8 +423,9 @@ def gerar_pdf_comparacao(dados_comparacao, observacao, tema):
     if isinstance(out, str): return out.encode('latin1')
     return out
 
+
 # -----------------------------------------------------------------------------
-# Interface Principal
+# Interface Principal (Abas)
 # -----------------------------------------------------------------------------
 st.title("📊 Calculadora PSS - Servidores Públicos Federais (RPPS)")
 st.markdown("Calcule a contribuição previdenciária (PSS) para o Regime Próprio da União (2020 a 2026).")
@@ -401,7 +459,7 @@ with tab2:
     st.subheader("📅 Informe os valores para cada ano (2020 a 2026)")
     valores_anuais = {}
     for ano in AVAILABLE_YEARS:
-        val_str = st.text_input(f"Valor para {ano} (R$)", value="0,00", key=f"valor_{ano}")
+        val_str = st.text_input(f"Valor para {ano} (R$)", key=f"valor_{ano}")
         valores_anuais[ano] = parse_valor(val_str)
 
     if st.button("📄 Gerar Relatório PDF Detalhado", key="gerar_pdf"):
@@ -427,18 +485,18 @@ with tab2:
                         self.set_font('Arial', '', 10)
                         if hasattr(self, 'theme_colors'):
                             self.set_fill_color(*self.theme_colors["header_bg"])
-                        if 'processo' in st.session_state and st.session_state.processo:
-                            self.cell(0, 8, f" Processo: {sanitize_text(st.session_state.processo)}", ln=True, fill=True)
+                        if st.session_state.processo_input:
+                            self.cell(0, 8, f" Processo: {sanitize_text(st.session_state.processo_input)}", ln=True, fill=True)
                             self.ln(1)
-                        if 'autor' in st.session_state and st.session_state.autor:
-                            self.cell(0, 8, f" Autor: {sanitize_text(st.session_state.autor)}", ln=True, fill=True)
+                        if st.session_state.autor_input:
+                            self.cell(0, 8, f" Autor: {sanitize_text(st.session_state.autor_input)}", ln=True, fill=True)
                             self.ln(5)
                 def footer(self):
                     self.set_y(-15)
                     self.set_font('Arial', 'I', 8)
                     self.cell(0, 10, f'Página {self.page_no()}', align='C')
 
-            def gerar_pdf_detalhado(dados_anos, obs, tema):
+            def gerar_pdf_detalhado(dados_anos, obs_texto, tema):
                 pdf = PDFDet()
                 pdf.theme_colors = tema
                 pdf.add_page()
@@ -483,7 +541,7 @@ with tab2:
                     pdf.ln(5)
                     pdf.set_font('Arial', 'I', 8)
                     pdf.cell(0, 6, f"Fonte: {sanitize_text(PORTARIAS.get(linha['ano'], 'Portaria não especificada'))}", ln=True)
-                if obs:
+                if obs_texto:
                     pdf.add_page()
                     pdf.set_draw_color(*tema["divider"])
                     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -491,12 +549,12 @@ with tab2:
                     pdf.set_font('Arial', 'B', 11)
                     pdf.cell(0, 10, 'Observações:', ln=True)
                     pdf.set_font('Arial', '', 10)
-                    pdf.multi_cell(0, 6, sanitize_text(obs))
+                    pdf.multi_cell(0, 6, sanitize_text(obs_texto))
                 out = pdf.output(dest='S')
                 if isinstance(out, str): return out.encode('latin1')
                 return out
 
-            pdf_bytes = gerar_pdf_detalhado(dados_relatorio, observacao, tema_ativo)
+            pdf_bytes = gerar_pdf_detalhado(dados_relatorio, st.session_state.observacao_input, tema_ativo)
             b64 = base64.b64encode(pdf_bytes).decode()
             href = f'<a href="data:application/octet-stream;base64,{b64}" download="relatorio_pss_detalhado.pdf">📥 Clique aqui para baixar o relatório PDF</a>'
             st.markdown(href, unsafe_allow_html=True)
@@ -512,12 +570,12 @@ with tab3:
     with cols[0]:
         st.markdown("**Base 1 (Valor)**")
         for ano in AVAILABLE_YEARS:
-            val_str = st.text_input(f"{ano} (R$)", value="0,00", key=f"comp_base1_{ano}")
+            val_str = st.text_input(f"{ano} (R$)", key=f"comp_base1_{ano}")
             bases[f"base1_{ano}"] = parse_valor(val_str)
     with cols[1]:
         st.markdown("**Base 2 (Valor)**")
         for ano in AVAILABLE_YEARS:
-            val_str = st.text_input(f"{ano} (R$)", value="0,00", key=f"comp_base2_{ano}")
+            val_str = st.text_input(f"{ano} (R$)", key=f"comp_base2_{ano}")
             bases[f"base2_{ano}"] = parse_valor(val_str)
 
     col_btn1, col_btn2 = st.columns(2)
@@ -559,7 +617,7 @@ with tab3:
             if not dados_comparacao:
                 st.warning("Nenhum dado para gerar relatório. Informe pelo menos um valor positivo em algum ano.")
             else:
-                pdf_bytes = gerar_pdf_comparacao(dados_comparacao, observacao, tema_ativo)
+                pdf_bytes = gerar_pdf_comparacao(dados_comparacao, st.session_state.observacao_input, tema_ativo)
                 b64 = base64.b64encode(pdf_bytes).decode()
                 href = f'<a href="data:application/octet-stream;base64,{b64}" download="relatorio_comparativo_pss.pdf">📥 Clique aqui para baixar o relatório comparativo PDF</a>'
                 st.markdown(href, unsafe_allow_html=True)
@@ -577,46 +635,3 @@ with st.expander("📋 Ver Tabelas de Contribuição (por ano)"):
 
 st.markdown("---")
 st.caption("Fonte: Portarias Interministeriais MPS/MF dos respectivos anos. Cálculo progressivo por faixas.")
-
-# -----------------------------------------------------------------------------
-# Botão de Exportação de Dados (JSON)
-# -----------------------------------------------------------------------------
-with st.sidebar:
-    st.markdown("---")
-    st.header("💾 Exportar Dados")
-    
-    # Tratamento para capturar os 2 primeiros nomes do Autor
-    autor_raw = st.session_state.get("autor", "").strip()
-    if autor_raw:
-        partes_nome = autor_raw.split()
-        dois_primeiros_nomes = " ".join(partes_nome[:2]).upper()
-    else:
-        dois_primeiros_nomes = "SEM_NOME"
-        
-    timestamp = datetime.now().strftime("%d%m%Y%H%M%S")
-    nome_arquivo_json = f"CALC_PSS_OS {dois_primeiros_nomes} {timestamp}.json"
-    
-    dados_para_exportar = {
-        "informacoes_processo": {
-            "processo": st.session_state.get("processo", ""),
-            "autor": st.session_state.get("autor", ""),
-            "observacoes": observacao
-        },
-        "valores_relatorio_anual": {
-            str(ano): st.session_state.get(f"valor_{ano}", "0,00") for ano in AVAILABLE_YEARS
-        },
-        "valores_comparacao": {
-            "base_1": {str(ano): st.session_state.get(f"comp_base1_{ano}", "0,00") for ano in AVAILABLE_YEARS},
-            "base_2": {str(ano): st.session_state.get(f"comp_base2_{ano}", "0,00") for ano in AVAILABLE_YEARS}
-        }
-    }
-    
-    json_string = json.dumps(dados_para_exportar, ensure_ascii=False, indent=4)
-    
-    st.download_button(
-        label="📥 Baixar arquivo .json",
-        data=json_string,
-        file_name=nome_arquivo_json,
-        mime="application/json",
-        use_container_width=True
-    )
