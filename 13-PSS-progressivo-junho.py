@@ -2,18 +2,59 @@ import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 import base64
-import json  # <- NOVA IMPORTAÇÃO PARA O JSON
+import json
+from datetime import datetime
 
 # -----------------------------------------------------------------------------
-# Funções de Tratamento e Sanitização (NOVAS)
+# Dicionário de Temas (Cores Hex e RGB para o FPDF)
+# -----------------------------------------------------------------------------
+THEMES = {
+    "Salmão": {
+        "th_bg": (255, 197, 153),       # #FFC599
+        "header_bg": (255, 236, 217),   # #ffecd9
+        "divider": (190, 80, 20),       # #BE5014
+        "css": """
+        <style>
+            :root {
+                --primary: #4d2916;
+                --th-bg: #FFC599;
+                --divider-color: #BE5014;
+                --info: #692a08;
+                --header-bg: #ffecd9;
+            }
+            th { color: #000 !important; border-color: #dca377 !important; background-color: var(--th-bg) !important; }
+            .header-row { color: #000 !important; border-color: #FFC599 !important; background-color: var(--header-bg) !important; }
+        </style>
+        """
+    },
+    "Clássico (Azul/Cinza)": {
+        "th_bg": (245, 245, 245),       # #f5f5f5
+        "header_bg": (208, 211, 212),   # #d0d3d4
+        "divider": (127, 140, 141),     # #7f8c8d
+        "css": """
+        <style>
+            :root {
+                --primary: #585a5a;
+                --th-bg: #f5f5f5;
+                --divider-color: #7f8c8d;
+                --info: #585a5a;
+                --header-bg: #d0d3d4;
+            }
+            th { color: #000 !important; border-color: #7f8c8d !important; background-color: var(--th-bg) !important; }
+            .header-row { color: #000 !important; border-color: #7f8c8d !important; background-color: var(--header-bg) !important; }
+        </style>
+        """
+    }
+}
+
+# -----------------------------------------------------------------------------
+# Funções de Tratamento e Sanitização
 # -----------------------------------------------------------------------------
 
 def parse_valor(v_str):
-    """Permite colar valores no formato brasileiro (ex: 5.349,22) e converte para float."""
     v_str = str(v_str).strip().replace('R$', '').strip()
     if not v_str:
         return 0.0
-    # Se houver vírgula, assume o padrão BR: tira os pontos e troca vírgula por ponto.
     if ',' in v_str:
         v_str = v_str.replace('.', '')
         v_str = v_str.replace(',', '.')
@@ -23,94 +64,57 @@ def parse_valor(v_str):
         return 0.0
 
 def sanitize_text(text):
-    """Remove 'aspas inteligentes' e outros caracteres que quebram o PDF (latin1)."""
     if not text:
         return ""
     replacements = {
-        '\u201c': '"', '\u201d': '"',  # aspas duplas inteligentes
-        '\u2018': "'", '\u2019': "'",  # aspas simples inteligentes
-        '\u2013': '-', '\u2014': '-',  # travessões
-        '\u2026': '...',               # reticências
+        '\u201c': '"', '\u201d': '"',
+        '\u2018': "'", '\u2019': "'",
+        '\u2013': '-', '\u2014': '-',
+        '\u2026': '...',
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
-    # Garante que nenhum outro caractere especial trave o PDF
     return text.encode('latin1', 'replace').decode('latin1')
 
 # -----------------------------------------------------------------------------
-# Tabelas de contribuição do RPPS (Regime Próprio da União) – 2020 a 2026
+# Tabelas de contribuição do RPPS – 2020 a 2026
 # -----------------------------------------------------------------------------
 
 TABLES = {
     2020: [
-        (0.00, 1045.00, 0.075),
-        (1045.01, 2000.00, 0.09),
-        (2000.01, 3000.00, 0.12),
-        (3000.01, 5839.45, 0.14),
-        (5839.46, 10000.00, 0.145),
-        (10000.01, 20000.00, 0.165),
-        (20000.01, 39000.00, 0.19),
-        (39000.01, float('inf'), 0.22),
+        (0.00, 1045.00, 0.075), (1045.01, 2000.00, 0.09), (2000.01, 3000.00, 0.12),
+        (3000.01, 5839.45, 0.14), (5839.46, 10000.00, 0.145), (10000.01, 20000.00, 0.165),
+        (20000.01, 39000.00, 0.19), (39000.01, float('inf'), 0.22),
     ],
     2021: [
-        (0.00, 1100.00, 0.075),
-        (1100.01, 2203.48, 0.09),
-        (2203.49, 3305.22, 0.12),
-        (3305.23, 6433.57, 0.14),
-        (6433.58, 11017.42, 0.145),
-        (11017.43, 22034.83, 0.165),
-        (22034.84, 42967.92, 0.19),
-        (42967.93, float('inf'), 0.22),
+        (0.00, 1100.00, 0.075), (1100.01, 2203.48, 0.09), (2203.49, 3305.22, 0.12),
+        (3305.23, 6433.57, 0.14), (6433.58, 11017.42, 0.145), (11017.43, 22034.83, 0.165),
+        (22034.84, 42967.92, 0.19), (42967.93, float('inf'), 0.22),
     ],
     2022: [
-        (0.00, 1212.00, 0.075),
-        (1212.01, 2427.35, 0.09),
-        (2427.36, 3641.03, 0.12),
-        (3641.04, 7087.22, 0.14),
-        (7087.23, 12136.79, 0.145),
-        (12136.80, 24273.57, 0.165),
-        (24273.58, 47333.46, 0.19),
-        (47333.47, float('inf'), 0.22),
+        (0.00, 1212.00, 0.075), (1212.01, 2427.35, 0.09), (2427.36, 3641.03, 0.12),
+        (3641.04, 7087.22, 0.14), (7087.23, 12136.79, 0.145), (12136.80, 24273.57, 0.165),
+        (24273.58, 47333.46, 0.19), (47333.47, float('inf'), 0.22),
     ],
     2023: [
-        (0.00, 1302.00, 0.075),
-        (1302.01, 2571.29, 0.09),
-        (2571.30, 3856.94, 0.12),
-        (3856.95, 7507.49, 0.14),
-        (7507.50, 12856.50, 0.145),
-        (12856.51, 25712.99, 0.165),
-        (25713.00, 50140.33, 0.19),
-        (50140.34, float('inf'), 0.22),
+        (0.00, 1302.00, 0.075), (1302.01, 2571.29, 0.09), (2571.30, 3856.94, 0.12),
+        (3856.95, 7507.49, 0.14), (7507.50, 12856.50, 0.145), (12856.51, 25712.99, 0.165),
+        (25713.00, 50140.33, 0.19), (50140.34, float('inf'), 0.22),
     ],
     2024: [
-        (0.00, 1412.00, 0.075),
-        (1412.01, 2666.68, 0.09),
-        (2666.69, 4000.03, 0.12),
-        (4000.04, 7786.02, 0.14),
-        (7786.03, 13333.48, 0.145),
-        (13333.49, 26666.94, 0.165),
-        (26666.95, 52000.54, 0.19),
-        (52000.55, float('inf'), 0.22),
+        (0.00, 1412.00, 0.075), (1412.01, 2666.68, 0.09), (2666.69, 4000.03, 0.12),
+        (4000.04, 7786.02, 0.14), (7786.03, 13333.48, 0.145), (13333.49, 26666.94, 0.165),
+        (26666.95, 52000.54, 0.19), (52000.55, float('inf'), 0.22),
     ],
     2025: [
-        (0.00, 1518.00, 0.075),
-        (1518.01, 2793.88, 0.09),
-        (2793.89, 4190.83, 0.12),
-        (4190.84, 8157.41, 0.14),
-        (8157.42, 13969.49, 0.145),
-        (13969.50, 27938.95, 0.165),
-        (27938.96, 54480.97, 0.19),
-        (54480.98, float('inf'), 0.22),
+        (0.00, 1518.00, 0.075), (1518.01, 2793.88, 0.09), (2793.89, 4190.83, 0.12),
+        (4190.84, 8157.41, 0.14), (8157.42, 13969.49, 0.145), (13969.50, 27938.95, 0.165),
+        (27938.96, 54480.97, 0.19), (54480.98, float('inf'), 0.22),
     ],
     2026: [
-        (0.00, 1621.00, 0.075),
-        (1621.01, 2902.84, 0.09),
-        (2902.85, 4354.27, 0.12),
-        (4354.28, 8475.55, 0.14),
-        (8475.56, 14514.30, 0.145),
-        (14514.31, 29028.57, 0.165),
-        (29028.58, 56605.73, 0.19),
-        (56605.74, float('inf'), 0.22),
+        (0.00, 1621.00, 0.075), (1621.01, 2902.84, 0.09), (2902.85, 4354.27, 0.12),
+        (4354.28, 8475.55, 0.14), (8475.56, 14514.30, 0.145), (14514.31, 29028.57, 0.165),
+        (29028.58, 56605.73, 0.19), (56605.74, float('inf'), 0.22),
     ],
 }
 
@@ -159,19 +163,40 @@ def formatar_moeda(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # -----------------------------------------------------------------------------
-# Geração de PDF comparativo com síntese e somatório
+# Interface Streamlit (Início)
 # -----------------------------------------------------------------------------
-class PDF(FPDF):
+st.set_page_config(page_title="Calculadora PSS - RPPS", layout="wide")
+
+# Configuração da Barra Lateral (Sidebar)
+with st.sidebar:
+    st.header("🎨 Tema Visual")
+    tema_selecionado = st.radio("Escolha o esquema de cores:", ["Salmão", "Clássico (Azul/Cinza)"])
+    tema_ativo = THEMES[tema_selecionado]
+    
+    st.markdown("---")
+    
+    st.header("Informações do Processo")
+    if 'processo' not in st.session_state: st.session_state.processo = ""
+    if 'autor' not in st.session_state: st.session_state.autor = ""
+    st.session_state.processo = st.text_input("Número do Processo", key="processo_input", value=st.session_state.processo)
+    st.session_state.autor = st.text_input("Nome do Autor da Ação", key="autor_input", value=st.session_state.autor)
+    observacao = st.text_area("Observações (opcional)", height=100)
+
+# Injetar o CSS dinâmico baseado no tema escolhido
+st.markdown(tema_ativo["css"], unsafe_allow_html=True)
+
+# -----------------------------------------------------------------------------
+# Geração de PDF comparativo e detalhado dinâmico
+# -----------------------------------------------------------------------------
+class PDFComp(FPDF):
     def header(self):
         if self.page_no() == 1:
             self.set_font('Arial', 'B', 12)
-            self.cell(0, 10, 'Relatório de Cálculo PSS - RPPS', ln=True, align='C')
+            self.cell(0, 10, 'Relatório Comparativo PSS - RPPS', ln=True, align='C')
             self.ln(5)
             self.set_font('Arial', '', 10)
-            
-            # Definição da cor salmão claro (--header-bg: #ffecd9) convertida para RGB
-            self.set_fill_color(255, 236, 217) 
-            
+            if hasattr(self, 'theme_colors'):
+                self.set_fill_color(*self.theme_colors["header_bg"]) 
             if 'processo' in st.session_state and st.session_state.processo:
                 proc = sanitize_text(st.session_state.processo)
                 self.cell(0, 8, f" Processo: {proc}", ln=True, fill=True)
@@ -186,17 +211,13 @@ class PDF(FPDF):
         self.set_font('Arial', 'I', 8)
         self.cell(0, 10, f'Página {self.page_no()}', align='C')
 
-def gerar_pdf_comparacao(dados_comparacao, observacao):
-    pdf = PDF()
+def gerar_pdf_comparacao(dados_comparacao, observacao, tema):
+    pdf = PDFComp()
+    pdf.theme_colors = tema
     pdf.add_page()
-    pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 10, 'Relatório Comparativo PSS - RPPS', ln=True, align='C')
-    pdf.ln(5)
-
-    dados_sintese = []
     
-    # Cor padrão para o cabeçalho das tabelas (--th-bg: #FFC599)
-    pdf.set_fill_color(255, 197, 153)
+    dados_sintese = []
+    pdf.set_fill_color(*tema["th_bg"])
 
     for idx, ano_data in enumerate(dados_comparacao):
         ano = ano_data['ano']
@@ -211,21 +232,19 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
             pdf.add_page()
 
         pdf.set_font('Arial', 'B', 11)
-        # Título de Ano com fundo salmão
         pdf.cell(0, 10, f" Ano {ano}", ln=True, align='C', fill=True)
         pdf.ln(5)
 
         # Base 1
         pdf.set_font('Arial', 'B', 10)
         pdf.cell(0, 8, f" Base 1 - Valor: {formatar_moeda(sal1)}", ln=True)
-        pdf.set_font('Arial', 'B', 9) # Fonte bold para o cabeçalho
-        # Cabeçalhos com fundo salmão (fill=True)
+        pdf.set_font('Arial', 'B', 9)
         pdf.cell(50, 8, 'Faixa de Valor', border=1, fill=True)
         pdf.cell(40, 8, 'Base (R$)', border=1, fill=True)
         pdf.cell(30, 8, 'Alíquota', border=1, fill=True)
         pdf.cell(50, 8, 'Contribuição (R$)', border=1, fill=True)
         pdf.ln()
-        pdf.set_font('Arial', '', 9) # Fonte normal para as linhas
+        pdf.set_font('Arial', '', 9)
         for det in breakdown1:
             pdf.cell(50, 8, det['faixa'], border=1)
             pdf.cell(40, 8, formatar_moeda(det['base']), border=1)
@@ -281,13 +300,9 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.ln(10)
 
         dados_sintese.append({
-            "Ano": ano,
-            "Valor Base 1": formatar_moeda(sal1),
-            "Valor Base 2": formatar_moeda(sal2),
-            "Contribuição Base 1": formatar_moeda(contrib1),
-            "Contribuição Base 2": formatar_moeda(contrib2),
-            "Diferença entre valores_base": formatar_moeda(diff_valor),
-            "Diferença Contribuição": formatar_moeda(diff_contrib),
+            "Ano": ano, "Valor Base 1": formatar_moeda(sal1), "Valor Base 2": formatar_moeda(sal2),
+            "Contribuição Base 1": formatar_moeda(contrib1), "Contribuição Base 2": formatar_moeda(contrib2),
+            "Diferença entre valores_base": formatar_moeda(diff_valor), "Diferença Contribuição": formatar_moeda(diff_contrib),
             "diff_contrib_raw": diff_contrib,
         })
 
@@ -298,9 +313,7 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(0, 10, 'Síntese Comparativa', ln=True, align='C')
         pdf.ln(5)
 
-        # Cabeçalho com fundo salmão (--th-bg: #FFC599)
         pdf.set_font('Arial', 'B', 8)
-        pdf.set_fill_color(255, 197, 153)
         margem_esquerda = pdf.get_x()
         pdf.cell(15, 8, 'Ano', border=1, fill=True)
         pdf.cell(30, 8, 'Valor Base 1', border=1, fill=True)
@@ -310,17 +323,13 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         
         x = pdf.get_x()
         y = pdf.get_y()
-        
         pdf.multi_cell(28, 4, 'Diferença entre\nvalores_base', border=1, align='C', fill=True)
         pdf.set_xy(x + 28, y)
         pdf.multi_cell(32, 4, 'Diferença\nContribuição', border=1, align='C', fill=True)
-
         pdf.set_xy(margem_esquerda, y + 8)
-
         pdf.set_font('Arial', '', 8)
         
         total_diff_contrib = 0.0
-        
         for linha in dados_sintese:
             pdf.cell(15, 8, str(linha['Ano']), border=1)
             pdf.cell(30, 8, linha['Valor Base 1'], border=1)
@@ -332,7 +341,6 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
             pdf.ln()
             total_diff_contrib += linha['diff_contrib_raw']
 
-        # Linha de total
         pdf.set_font('Arial', 'B', 8)
         pdf.cell(15, 8, 'Total', border=1)
         pdf.cell(30, 8, '', border=1)
@@ -343,12 +351,10 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.cell(32, 8, formatar_moeda(total_diff_contrib), border=1)
         pdf.ln()
 
-    # Observações tratadas com sanitização
     if observacao:
         obs_sanitizada = sanitize_text(observacao)
         pdf.ln(5)
-        # Linha divisória (--divider-color: #BE5014)
-        pdf.set_draw_color(190, 80, 20)
+        pdf.set_draw_color(*tema["divider"])
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
@@ -357,40 +363,14 @@ def gerar_pdf_comparacao(dados_comparacao, observacao):
         pdf.multi_cell(0, 6, obs_sanitizada)
 
     out = pdf.output(dest='S')
-    if isinstance(out, str):
-        return out.encode('latin1')
+    if isinstance(out, str): return out.encode('latin1')
     return out
 
 # -----------------------------------------------------------------------------
-# Interface Streamlit 
+# Interface Principal
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Calculadora PSS - RPPS", layout="wide")
-
-# CSS Injetado para estilizar a interface web com as cores do HTML fornecido
-st.markdown("""
-<style>
-    :root {
-        --primary: #4d2916;
-        --th-bg: #FFC599;
-        --divider-color: #BE5014;
-        --info: #692a08;
-        --header-bg: #ffecd9;
-    }
-    th { color: #000 !important; border-color: #dca377 !important; background-color: var(--th-bg) !important; }
-    .header-row { color: #000 !important; border-color: #FFC599 !important; background-color: var(--header-bg) !important; }
-</style>
-""", unsafe_allow_html=True)
-
 st.title("📊 Calculadora PSS - Servidores Públicos Federais (RPPS)")
 st.markdown("Calcule a contribuição previdenciária (PSS) para o Regime Próprio da União (2020 a 2026).")
-
-with st.sidebar:
-    st.header("Informações do Processo")
-    if 'processo' not in st.session_state: st.session_state.processo = ""
-    if 'autor' not in st.session_state: st.session_state.autor = ""
-    st.session_state.processo = st.text_input("Número do Processo", key="processo_input", value=st.session_state.processo)
-    st.session_state.autor = st.text_input("Nome do Autor da Ação", key="autor_input", value=st.session_state.autor)
-    observacao = st.text_area("Observações (opcional)", height=100)
 
 tab1, tab2, tab3 = st.tabs(["🔍 Cálculo Detalhado por Faixa", "📅 Relatório Anual (PDF Detalhado)", "⚖️ Comparação de Bases"])
 
@@ -399,9 +379,7 @@ with tab1:
     col1, col2 = st.columns(2)
     with col1:
         ano_detalhe = st.selectbox("Selecione o ano", options=AVAILABLE_YEARS, key="detail_year")
-        salario_detalhe_str = st.text_input(
-            f"Valor (R$) – base de contribuição ({ano_detalhe})",
-            value="0,00", key="detail_salary")
+        salario_detalhe_str = st.text_input(f"Valor (R$) – base de contribuição ({ano_detalhe})", value="0,00", key="detail_salary")
         salario_detalhe = parse_valor(salario_detalhe_str)
         
     with col2:
@@ -434,12 +412,8 @@ with tab2:
                 contrib, detalhes = calcular_contribuicao_progressiva(val, TABLES[ano])
                 efetiva = (contrib / val * 100) if val > 0 else 0.0
                 dados_relatorio.append({
-                    "ano": ano,
-                    "valor": formatar_moeda(val),
-                    "contribuicao": formatar_moeda(contrib),
-                    "aliquota": f"{efetiva:.2f}%",
-                    "contrib_raw": contrib,
-                    "detalhes": detalhes
+                    "ano": ano, "valor": formatar_moeda(val), "contribuicao": formatar_moeda(contrib),
+                    "aliquota": f"{efetiva:.2f}%", "contrib_raw": contrib, "detalhes": detalhes
                 })
         if not dados_relatorio:
             st.warning("Nenhum dado para gerar relatório. Informe pelo menos um valor positivo.")
@@ -451,7 +425,8 @@ with tab2:
                         self.cell(0, 10, 'Relatório de Cálculo PSS - RPPS', ln=True, align='C')
                         self.ln(5)
                         self.set_font('Arial', '', 10)
-                        self.set_fill_color(255, 236, 217) # (--header-bg: #ffecd9)
+                        if hasattr(self, 'theme_colors'):
+                            self.set_fill_color(*self.theme_colors["header_bg"])
                         if 'processo' in st.session_state and st.session_state.processo:
                             self.cell(0, 8, f" Processo: {sanitize_text(st.session_state.processo)}", ln=True, fill=True)
                             self.ln(1)
@@ -463,10 +438,11 @@ with tab2:
                     self.set_font('Arial', 'I', 8)
                     self.cell(0, 10, f'Página {self.page_no()}', align='C')
 
-            def gerar_pdf_detalhado(dados_anos, obs):
+            def gerar_pdf_detalhado(dados_anos, obs, tema):
                 pdf = PDFDet()
+                pdf.theme_colors = tema
                 pdf.add_page()
-                pdf.set_fill_color(255, 197, 153) # (--th-bg: #FFC599)
+                pdf.set_fill_color(*tema["th_bg"])
                 pdf.set_font('Arial', 'B', 11)
                 pdf.cell(0, 10, ' Resumo por Ano', ln=True, fill=True)
                 pdf.set_font('Arial', 'B', 10)
@@ -483,8 +459,7 @@ with tab2:
                     pdf.cell(40, 8, linha['aliquota'], border=1)
                     pdf.ln()
                 for linha in dados_anos:
-                    if not linha.get('detalhes'):
-                        continue
+                    if not linha.get('detalhes'): continue
                     pdf.add_page()
                     pdf.set_font('Arial', 'B', 11)
                     pdf.cell(0, 10, f" Detalhamento Progressivo - Ano {linha['ano']}", ln=True, fill=True)
@@ -510,16 +485,18 @@ with tab2:
                     pdf.cell(0, 6, f"Fonte: {sanitize_text(PORTARIAS.get(linha['ano'], 'Portaria não especificada'))}", ln=True)
                 if obs:
                     pdf.add_page()
+                    pdf.set_draw_color(*tema["divider"])
+                    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+                    pdf.ln(5)
                     pdf.set_font('Arial', 'B', 11)
                     pdf.cell(0, 10, 'Observações:', ln=True)
                     pdf.set_font('Arial', '', 10)
                     pdf.multi_cell(0, 6, sanitize_text(obs))
                 out = pdf.output(dest='S')
-                if isinstance(out, str):
-                    return out.encode('latin1')
+                if isinstance(out, str): return out.encode('latin1')
                 return out
 
-            pdf_bytes = gerar_pdf_detalhado(dados_relatorio, observacao)
+            pdf_bytes = gerar_pdf_detalhado(dados_relatorio, observacao, tema_ativo)
             b64 = base64.b64encode(pdf_bytes).decode()
             href = f'<a href="data:application/octet-stream;base64,{b64}" download="relatorio_pss_detalhado.pdf">📥 Clique aqui para baixar o relatório PDF</a>'
             st.markdown(href, unsafe_allow_html=True)
@@ -556,13 +533,9 @@ with tab3:
                     diff_contrib = contrib2 - contrib1
                     diff_val = val2 - val1
                     comparacao.append({
-                        "Ano": ano,
-                        "Valor 1 (R$)": formatar_moeda(val1),
-                        "Contribuição 1 (R$)": formatar_moeda(contrib1),
-                        "Valor 2 (R$)": formatar_moeda(val2),
-                        "Contribuição 2 (R$)": formatar_moeda(contrib2),
-                        "Diferença entre valores_base (R$)": formatar_moeda(diff_val),
-                        "Diferença Contribuição (R$)": formatar_moeda(diff_contrib),
+                        "Ano": ano, "Valor 1 (R$)": formatar_moeda(val1), "Contribuição 1 (R$)": formatar_moeda(contrib1),
+                        "Valor 2 (R$)": formatar_moeda(val2), "Contribuição 2 (R$)": formatar_moeda(contrib2),
+                        "Diferença entre valores_base (R$)": formatar_moeda(diff_val), "Diferença Contribuição (R$)": formatar_moeda(diff_contrib),
                     })
             if comparacao:
                 df_comp = pd.DataFrame(comparacao)
@@ -580,24 +553,18 @@ with tab3:
                     contrib1, breakdown1 = calcular_contribuicao_progressiva(val1, TABLES[ano])
                     contrib2, breakdown2 = calcular_contribuicao_progressiva(val2, TABLES[ano])
                     dados_comparacao.append({
-                        "ano": ano,
-                        "sal1": val1,
-                        "sal2": val2,
-                        "contrib1": contrib1,
-                        "contrib2": contrib2,
-                        "breakdown1": breakdown1,
-                        "breakdown2": breakdown2,
+                        "ano": ano, "sal1": val1, "sal2": val2, "contrib1": contrib1, "contrib2": contrib2,
+                        "breakdown1": breakdown1, "breakdown2": breakdown2,
                     })
             if not dados_comparacao:
                 st.warning("Nenhum dado para gerar relatório. Informe pelo menos um valor positivo em algum ano.")
             else:
-                pdf_bytes = gerar_pdf_comparacao(dados_comparacao, observacao)
+                pdf_bytes = gerar_pdf_comparacao(dados_comparacao, observacao, tema_ativo)
                 b64 = base64.b64encode(pdf_bytes).decode()
                 href = f'<a href="data:application/octet-stream;base64,{b64}" download="relatorio_comparativo_pss.pdf">📥 Clique aqui para baixar o relatório comparativo PDF</a>'
                 st.markdown(href, unsafe_allow_html=True)
                 st.success("Relatório comparativo gerado com sucesso!")
 
-# Expansor com as tabelas de referência
 with st.expander("📋 Ver Tabelas de Contribuição (por ano)"):
     ano_tabela = st.selectbox("Selecione o ano para visualizar a tabela", options=AVAILABLE_YEARS, key="table_year")
     tabela_exibir = TABLES[ano_tabela]
@@ -611,15 +578,24 @@ with st.expander("📋 Ver Tabelas de Contribuição (por ano)"):
 st.markdown("---")
 st.caption("Fonte: Portarias Interministeriais MPS/MF dos respectivos anos. Cálculo progressivo por faixas.")
 
-
 # -----------------------------------------------------------------------------
-# Botão de Exportação de Dados (JSON) inserido na Sidebar
+# Botão de Exportação de Dados (JSON)
 # -----------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("---")
     st.header("💾 Exportar Dados")
     
-    # Coleta todos os dados digitados na sessão atual
+    # Tratamento para capturar os 2 primeiros nomes do Autor
+    autor_raw = st.session_state.get("autor", "").strip()
+    if autor_raw:
+        partes_nome = autor_raw.split()
+        dois_primeiros_nomes = " ".join(partes_nome[:2]).upper()
+    else:
+        dois_primeiros_nomes = "SEM_NOME"
+        
+    timestamp = datetime.now().strftime("%d%m%Y%H%M%S")
+    nome_arquivo_json = f"CALC_PSS_OS {dois_primeiros_nomes} {timestamp}.json"
+    
     dados_para_exportar = {
         "informacoes_processo": {
             "processo": st.session_state.get("processo", ""),
@@ -635,14 +611,12 @@ with st.sidebar:
         }
     }
     
-    # Converte o dicionário Python para uma string JSON formatada e legível
     json_string = json.dumps(dados_para_exportar, ensure_ascii=False, indent=4)
     
-    # Botão nativo do Streamlit para download
     st.download_button(
         label="📥 Baixar arquivo .json",
         data=json_string,
-        file_name="dados_calculo_pss.json",
+        file_name=nome_arquivo_json,
         mime="application/json",
         use_container_width=True
     )
