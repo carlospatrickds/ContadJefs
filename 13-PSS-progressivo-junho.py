@@ -50,6 +50,14 @@ THEMES = {
 # -----------------------------------------------------------------------------
 # Funções de Tratamento e Sanitização
 # -----------------------------------------------------------------------------
+def limpar_chaves_json(obj):
+    """Remove espaços em branco no início e no final de todas as chaves do JSON recursivamente."""
+    if isinstance(obj, dict):
+        return {k.strip(): limpar_chaves_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [limpar_chaves_json(i) for i in obj]
+    return obj
+
 def parse_valor(v_str):
     v_str = str(v_str).strip().replace('R$', '').strip()
     if not v_str:
@@ -101,7 +109,7 @@ PORTARIAS = {
 AVAILABLE_YEARS = sorted(TABLES.keys())
 
 # -----------------------------------------------------------------------------
-# Inicialização do Session State (Necessário para a Importação funcionar)
+# Inicialização do Session State
 # -----------------------------------------------------------------------------
 if 'processo_input' not in st.session_state: st.session_state.processo_input = ""
 if 'autor_input' not in st.session_state: st.session_state.autor_input = ""
@@ -113,7 +121,7 @@ for ano in AVAILABLE_YEARS:
     if f"comp_base2_{ano}" not in st.session_state: st.session_state[f"comp_base2_{ano}"] = "0,00"
 
 # -----------------------------------------------------------------------------
-# Lógica de Cálculo Principal
+# Lógica de Cálculo Principal (INALTERADA)
 # -----------------------------------------------------------------------------
 def calcular_contribuicao_progressiva(salario, tabela):
     if salario <= 0: return 0.0, []
@@ -154,56 +162,100 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # IMPORTAÇÃO DE DADOS -----------------------------------------------------
+    # IMPORTAÇÃO DE DADOS (ATUALIZADA PARA O NOVO JSON)
     st.header("📂 Importar Dados")
     arquivo_importado = st.file_uploader("Carregar arquivo .json", type=["json"])
+    
     if arquivo_importado is not None:
-        if st.button("Restaurar Dados"):
+        if st.button("Restaurar Dados do JSON"):
             try:
-                dados_json = json.load(arquivo_importado)
+                # 1. Lê e limpa as chaves com espaços (ex: "proc " vira "proc")
+                dados_brutos = json.load(arquivo_importado)
+                dados_json = limpar_chaves_json(dados_brutos)
                 
-                # Restaurar Informações do Processo
-                info = dados_json.get("informacoes_processo", {})
-                st.session_state.processo_input = info.get("processo", "")
-                st.session_state.autor_input = info.get("autor", "")
-                st.session_state.observacao_input = info.get("observacoes", "")
-                
-                # Restaurar Valores Relatório Anual (Tab 2)
-                val_anuais = dados_json.get("valores_relatorio_anual", {})
-                for ano, valor in val_anuais.items():
-                    if f"valor_{ano}" in st.session_state:
-                        st.session_state[f"valor_{ano}"] = valor
+                # 2. Verifica se é o novo formato (tem 'meta' e 'd')
+                if 'meta' in dados_json and 'd' in dados_json:
+                    meta = dados_json['meta']
+                    st.session_state.processo_input = str(meta.get('proc', '')).strip()
+                    st.session_state.autor_input = str(meta.get('aut', '')).strip()
+                    st.session_state.observacao_input = str(meta.get('param', '')).strip()
+                    
+                    # 3. Agrega os valores mensais (gratP e gratD) por ANO
+                    bases_por_ano = {}
+                    for item in dados_json['d']:
+                        mes_ano = str(item.get('c', '')).strip()
+                        if not mes_ano or '/' not in mes_ano:
+                            continue
                         
-                # Restaurar Valores Comparação (Tab 3)
-                val_comp = dados_json.get("valores_comparacao", {})
-                base1 = val_comp.get("base_1", {})
-                base2 = val_comp.get("base_2", {})
-                
-                for ano, valor in base1.items():
-                    if f"comp_base1_{ano}" in st.session_state:
-                        st.session_state[f"comp_base1_{ano}"] = valor
-                for ano, valor in base2.items():
-                    if f"comp_base2_{ano}" in st.session_state:
-                        st.session_state[f"comp_base2_{ano}"] = valor
-                        
-                st.success("Dados restaurados com sucesso!")
-                st.rerun() # Atualiza a tela instantaneamente com os novos dados
+                        # Extrai o ano (ex: "11/2020" -> 2020)
+                        try:
+                            ano = int(mes_ano.split('/')[1])
+                        except (IndexError, ValueError):
+                            continue
+                            
+                        if ano not in bases_por_ano:
+                            bases_por_ano[ano] = {'gratP': 0.0, 'gratD': 0.0}
+                            
+                        bases_por_ano[ano]['gratP'] += float(item.get('gratP', 0))
+                        bases_por_ano[ano]['gratD'] += float(item.get('gratD', 0))
+                    
+                    # 4. Preenche o Session State nos formatos esperados pelas Tabs 2 e 3
+                    for ano in AVAILABLE_YEARS:
+                        if ano in bases_por_ano:
+                            val_base1 = bases_por_ano[ano]['gratP']
+                            val_base2 = bases_por_ano[ano]['gratD']
+                            
+                            # Formata com vírgula para os inputs de texto
+                            st.session_state[f"comp_base1_{ano}"] = f"{val_base1:.2f}".replace('.', ',')
+                            st.session_state[f"comp_base2_{ano}"] = f"{val_base2:.2f}".replace('.', ',')
+                            
+                            # Opcional: Preenche também a Tab 2 com a média ou soma, se desejar
+                            st.session_state[f"valor_{ano}"] = f"{val_base2:.2f}".replace('.', ',')
+                    
+                    st.success("✅ Dados do processo e bases de cálculo (13º) importados e agregados por ano com sucesso!")
+                    st.rerun()
+                    
+                else:
+                    # Fallback para o formato antigo (caso ainda use)
+                    info = dados_json.get("informacoes_processo", {})
+                    st.session_state.processo_input = info.get("processo", "")
+                    st.session_state.autor_input = info.get("autor", "")
+                    st.session_state.observacao_input = info.get("observacoes", "")
+                    
+                    val_anuais = dados_json.get("valores_relatorio_anual", {})
+                    for ano, valor in val_anuais.items():
+                        if f"valor_{ano}" in st.session_state:
+                            st.session_state[f"valor_{ano}"] = valor
+                            
+                    val_comp = dados_json.get("valores_comparacao", {})
+                    base1 = val_comp.get("base_1", {})
+                    base2 = val_comp.get("base_2", {})
+                    
+                    for ano, valor in base1.items():
+                        if f"comp_base1_{ano}" in st.session_state:
+                            st.session_state[f"comp_base1_{ano}"] = valor
+                    for ano, valor in base2.items():
+                        if f"comp_base2_{ano}" in st.session_state:
+                            st.session_state[f"comp_base2_{ano}"] = valor
+                            
+                    st.success("✅ Dados restaurados com sucesso (formato antigo)!")
+                    st.rerun()
+                    
             except Exception as e:
-                st.error(f"Erro ao ler o arquivo: {e}")
+                st.error(f"❌ Erro ao ler o arquivo: {e}")
                 
     st.markdown("---")
     
-    # INFORMAÇÕES DO PROCESSO -------------------------------------------------
+    # INFORMAÇÕES DO PROCESSO
     st.header("Informações do Processo")
     st.text_input("Número do Processo", key="processo_input")
     st.text_input("Nome do Autor da Ação", key="autor_input")
     st.text_area("Observações (opcional)", height=100, key="observacao_input")
 
-    # EXPORTAÇÃO DE DADOS -----------------------------------------------------
+    # EXPORTAÇÃO DE DADOS
     st.markdown("---")
     st.header("💾 Exportar Dados")
     
-    # Extração dos 2 primeiros nomes do Autor para o nome do arquivo
     autor_raw = st.session_state.autor_input.strip()
     if autor_raw:
         partes_nome = autor_raw.split()
@@ -563,17 +615,17 @@ with tab2:
 # Tab 3: Comparação de Bases
 with tab3:
     st.subheader("⚖️ Comparação entre duas bases de cálculo por ano")
-    st.markdown("Informe dois valores para cada ano. A diferença na contribuição será calculada.")
+    st.markdown("Informe dois valores para cada ano. A diferença na contribuição será calculada. *(Os campos abaixo são preenchidos automaticamente ao importar o JSON)*")
 
     cols = st.columns(2)
     bases = {}
     with cols[0]:
-        st.markdown("**Base 1 (Valor)**")
+        st.markdown("**Base 1 (13º Pago - gratP)**")
         for ano in AVAILABLE_YEARS:
             val_str = st.text_input(f"{ano} (R$)", key=f"comp_base1_{ano}")
             bases[f"base1_{ano}"] = parse_valor(val_str)
     with cols[1]:
-        st.markdown("**Base 2 (Valor)**")
+        st.markdown("**Base 2 (13º Devido - gratD)**")
         for ano in AVAILABLE_YEARS:
             val_str = st.text_input(f"{ano} (R$)", key=f"comp_base2_{ano}")
             bases[f"base2_{ano}"] = parse_valor(val_str)
