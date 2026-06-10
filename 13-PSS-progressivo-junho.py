@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 import base64
+import json  # <- NOVA IMPORTAÇÃO PARA O JSON
 
 # -----------------------------------------------------------------------------
 # Funções de Tratamento e Sanitização (NOVAS)
@@ -398,7 +399,6 @@ with tab1:
     col1, col2 = st.columns(2)
     with col1:
         ano_detalhe = st.selectbox("Selecione o ano", options=AVAILABLE_YEARS, key="detail_year")
-        # Usando text_input para permitir copiar/colar valores com vírgula
         salario_detalhe_str = st.text_input(
             f"Valor (R$) – base de contribuição ({ano_detalhe})",
             value="0,00", key="detail_salary")
@@ -610,3 +610,39 @@ with st.expander("📋 Ver Tabelas de Contribuição (por ano)"):
 
 st.markdown("---")
 st.caption("Fonte: Portarias Interministeriais MPS/MF dos respectivos anos. Cálculo progressivo por faixas.")
+
+
+# -----------------------------------------------------------------------------
+# Botão de Exportação de Dados (JSON) inserido na Sidebar
+# -----------------------------------------------------------------------------
+with st.sidebar:
+    st.markdown("---")
+    st.header("💾 Exportar Dados")
+    
+    # Coleta todos os dados digitados na sessão atual
+    dados_para_exportar = {
+        "informacoes_processo": {
+            "processo": st.session_state.get("processo", ""),
+            "autor": st.session_state.get("autor", ""),
+            "observacoes": observacao
+        },
+        "valores_relatorio_anual": {
+            str(ano): st.session_state.get(f"valor_{ano}", "0,00") for ano in AVAILABLE_YEARS
+        },
+        "valores_comparacao": {
+            "base_1": {str(ano): st.session_state.get(f"comp_base1_{ano}", "0,00") for ano in AVAILABLE_YEARS},
+            "base_2": {str(ano): st.session_state.get(f"comp_base2_{ano}", "0,00") for ano in AVAILABLE_YEARS}
+        }
+    }
+    
+    # Converte o dicionário Python para uma string JSON formatada e legível
+    json_string = json.dumps(dados_para_exportar, ensure_ascii=False, indent=4)
+    
+    # Botão nativo do Streamlit para download
+    st.download_button(
+        label="📥 Baixar arquivo .json",
+        data=json_string,
+        file_name="dados_calculo_pss.json",
+        mime="application/json",
+        use_container_width=True
+    )
