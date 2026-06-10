@@ -6,23 +6,78 @@ import json
 from datetime import datetime
 
 # -----------------------------------------------------------------------------
-# CONFIGURAÇÕES E TEMAS
+# Dicionário de Temas (Cores Hex e RGB para o FPDF)
 # -----------------------------------------------------------------------------
 THEMES = {
     "Salmão": {
-        "th_bg": (255, 197, 153),
-        "header_bg": (255, 236, 217),
-        "divider": (190, 80, 20),
-        "css": """<style>:root {--primary: #4d2916; --th-bg: #FFC599; --divider-color: #BE5014; --info: #692a08; --header-bg: #ffecd9;} th { color: #000 !important; border-color: #dca377 !important; background-color: var(--th-bg) !important; } .header-row { color: #000 !important; border-color: #FFC599 !important; background-color: var(--header-bg) !important; }</style>"""
+        "th_bg": (255, 197, 153),       # #FFC599
+        "header_bg": (255, 236, 217),   # #ffecd9
+        "divider": (190, 80, 20),       # #BE5014
+        "css": """
+        <style>
+            :root {
+                --primary: #4d2916;
+                --th-bg: #FFC599;
+                --divider-color: #BE5014;
+                --info: #692a08;
+                --header-bg: #ffecd9;
+            }
+            th { color: #000 !important; border-color: #dca377 !important; background-color: var(--th-bg) !important; }
+            .header-row { color: #000 !important; border-color: #FFC599 !important; background-color: var(--header-bg) !important; }
+        </style>
+        """
     },
     "Clássico (Azul/Cinza)": {
-        "th_bg": (245, 245, 245),
-        "header_bg": (208, 211, 212),
-        "divider": (127, 140, 141),
-        "css": """<style>:root {--primary: #585a5a; --th-bg: #f5f5f5; --divider-color: #7f8c8d; --info: #585a5a; --header-bg: #d0d3d4;} th { color: #000 !important; border-color: #7f8c8d !important; background-color: var(--th-bg) !important; } .header-row { color: #000 !important; border-color: #7f8c8d !important; background-color: var(--header-bg) !important; }</style>"""
+        "th_bg": (245, 245, 245),       # #f5f5f5
+        "header_bg": (208, 211, 212),   # #d0d3d4
+        "divider": (127, 140, 141),     # #7f8c8d
+        "css": """
+        <style>
+            :root {
+                --primary: #585a5a;
+                --th-bg: #f5f5f5;
+                --divider-color: #7f8c8d;
+                --info: #585a5a;
+                --header-bg: #d0d3d4;
+            }
+            th { color: #000 !important; border-color: #7f8c8d !important; background-color: var(--th-bg) !important; }
+            .header-row { color: #000 !important; border-color: #7f8c8d !important; background-color: var(--header-bg) !important; }
+        </style>
+        """
     }
 }
 
+# -----------------------------------------------------------------------------
+# Funções de Tratamento e Sanitização
+# -----------------------------------------------------------------------------
+def parse_valor(v_str):
+    v_str = str(v_str).strip().replace('R$', '').strip()
+    if not v_str:
+        return 0.0
+    if ',' in v_str:
+        v_str = v_str.replace('.', '')
+        v_str = v_str.replace(',', '.')
+    try:
+        return float(v_str)
+    except ValueError:
+        return 0.0
+
+def sanitize_text(text):
+    if not text:
+        return ""
+    replacements = {
+        '\u201c': '"', '\u201d': '"',
+        '\u2018': "'", '\u2019': "'",
+        '\u2013': '-', '\u2014': '-',
+        '\u2026': '...',
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return text.encode('latin1', 'replace').decode('latin1')
+
+# -----------------------------------------------------------------------------
+# Tabelas de contribuição do RPPS – 2020 a 2026
+# -----------------------------------------------------------------------------
 TABLES = {
     2020: [(0.00, 1045.00, 0.075), (1045.01, 2000.00, 0.09), (2000.01, 3000.00, 0.12), (3000.01, 5839.45, 0.14), (5839.46, 10000.00, 0.145), (10000.01, 20000.00, 0.165), (20000.01, 39000.00, 0.19), (39000.01, float('inf'), 0.22)],
     2021: [(0.00, 1100.00, 0.075), (1100.01, 2203.48, 0.09), (2203.49, 3305.22, 0.12), (3305.23, 6433.57, 0.14), (6433.58, 11017.42, 0.145), (11017.43, 22034.83, 0.165), (22034.84, 42967.92, 0.19), (42967.93, float('inf'), 0.22)],
@@ -32,94 +87,551 @@ TABLES = {
     2025: [(0.00, 1518.00, 0.075), (1518.01, 2793.88, 0.09), (2793.89, 4190.83, 0.12), (4190.84, 8157.41, 0.14), (8157.42, 13969.49, 0.145), (13969.50, 27938.95, 0.165), (27938.96, 54480.97, 0.19), (54480.98, float('inf'), 0.22)],
     2026: [(0.00, 1621.00, 0.075), (1621.01, 2902.84, 0.09), (2902.85, 4354.27, 0.12), (4354.28, 8475.55, 0.14), (8475.56, 14514.30, 0.145), (14514.31, 29028.57, 0.165), (29028.58, 56605.73, 0.19), (56605.74, float('inf'), 0.22)],
 }
+
+PORTARIAS = {
+    2020: "Portaria que instituiu as alíquotas progressivas em 2020 (baseada na EC nº 103/2019)",
+    2021: "Portaria SEPRT/ME nº 636, de 13 de janeiro de 2021",
+    2022: "Portaria MTP/ME nº 12, de 17 de janeiro de 2022",
+    2023: "Portaria MPS/MF nº 26, de 10 de janeiro de 2023",
+    2024: "Portaria MPS/MF nº 2, de 11 de janeiro de 2024",
+    2025: "Portaria MPS/MF nº 6, de 10 de janeiro de 2025",
+    2026: "Portaria MPS/MF nº 13, de 9 de janeiro de 2026",
+}
+
 AVAILABLE_YEARS = sorted(TABLES.keys())
 
 # -----------------------------------------------------------------------------
-# FUNÇÕES AUXILIARES
+# Inicialização do Session State (Necessário para a Importação funcionar)
 # -----------------------------------------------------------------------------
-def parse_valor(v_str):
-    if isinstance(v_str, float): return v_str
-    v_str = str(v_str).strip().replace('R$', '').strip()
-    if ',' in v_str: v_str = v_str.replace('.', '').replace(',', '.')
-    try: return float(v_str)
-    except: return 0.0
-
-def formatar_moeda(valor):
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-def calcular_contribuicao_progressiva(salario, tabela):
-    if salario <= 0: return 0.0, []
-    restante, total, detalhamento = salario, 0.0, []
-    for i, (lim_inf, lim_sup, aliquota) in enumerate(tabela):
-        if restante <= 0: break
-        tributavel = min(restante, lim_sup - lim_inf) if i > 0 and lim_sup != float('inf') else min(restante, lim_sup)
-        if i > 0 and lim_sup == float('inf'): tributavel = restante
-        if tributavel > 0:
-            contrib = tributavel * aliquota
-            total += contrib
-            detalhamento.append({"faixa": f"{formatar_moeda(lim_inf)} - {formatar_moeda(lim_sup) if lim_sup != float('inf') else 'acima'}", "base": tributavel, "aliquota": f"{aliquota*100:.2f}%", "contribuicao": contrib})
-            restante -= tributavel
-    return total, detalhamento
-
-# -----------------------------------------------------------------------------
-# INTERFACE E LÓGICA PRINCIPAL
-# -----------------------------------------------------------------------------
-st.set_page_config(page_title="Calculadora PSS", layout="wide")
-
-# Inicialização do estado
 if 'processo_input' not in st.session_state: st.session_state.processo_input = ""
 if 'autor_input' not in st.session_state: st.session_state.autor_input = ""
 if 'observacao_input' not in st.session_state: st.session_state.observacao_input = ""
 
+for ano in AVAILABLE_YEARS:
+    if f"valor_{ano}" not in st.session_state: st.session_state[f"valor_{ano}"] = "0,00"
+    if f"comp_base1_{ano}" not in st.session_state: st.session_state[f"comp_base1_{ano}"] = "0,00"
+    if f"comp_base2_{ano}" not in st.session_state: st.session_state[f"comp_base2_{ano}"] = "0,00"
+
+# -----------------------------------------------------------------------------
+# Lógica de Cálculo Principal
+# -----------------------------------------------------------------------------
+def calcular_contribuicao_progressiva(salario, tabela):
+    if salario <= 0: return 0.0, []
+    restante = salario
+    total = 0.0
+    detalhamento = []
+    for i, (lim_inf, lim_sup, aliquota) in enumerate(tabela):
+        if restante <= 0: break
+        if i == 0:
+            tributavel = min(restante, lim_sup)
+        else:
+            if lim_sup == float('inf'): tributavel = restante
+            else: tributavel = min(restante, lim_sup - lim_inf)
+        if tributavel > 0:
+            contrib = tributavel * aliquota
+            total += contrib
+            detalhamento.append({
+                "faixa": f"{formatar_moeda(lim_inf)} - {formatar_moeda(lim_sup) if lim_sup != float('inf') else 'acima'}",
+                "base": tributavel,
+                "aliquota": f"{aliquota*100:.2f}%",
+                "contribuicao": contrib
+            })
+            restante -= tributavel
+    return total, detalhamento
+
+def formatar_moeda(valor):
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+# -----------------------------------------------------------------------------
+# Interface Streamlit (Configuração e Barra Lateral)
+# -----------------------------------------------------------------------------
+st.set_page_config(page_title="Calculadora PSS - RPPS", layout="wide")
+
 with st.sidebar:
     st.header("🎨 Tema Visual")
-    tema_ativo = THEMES[st.radio("Escolha o tema:", ["Salmão", "Clássico (Azul/Cinza)"])]
-    st.markdown(tema_ativo["css"], unsafe_allow_html=True)
+    tema_selecionado = st.radio("Escolha o esquema de cores:", ["Salmão", "Clássico (Azul/Cinza)"])
+    tema_ativo = THEMES[tema_selecionado]
     
-    st.header("Informações")
-    st.text_input("Processo", key="processo_input")
-    st.text_input("Autor", key="autor_input")
-    st.text_area("Observações", key="observacao_input")
-
-    st.header("📂 Importar/Exportar")
-    # Importar estado do programa
-    up_state = st.file_uploader("Restaurar sessão (.json)", type=["json"], key="up_state")
-    if up_state and st.button("Restaurar"):
-        d = json.load(up_state)
-        for k, v in d.items(): st.session_state[k] = v
-        st.rerun()
+    st.markdown("---")
     
-    # Exportar estado do programa
-    nome_exp = f"CALC_PSS_{datetime.now().strftime('%d%m%Y%H%M%S')}.json"
-    st.download_button("📥 Exportar Sessão", data=json.dumps(dict(st.session_state)), file_name=nome_exp)
+    # IMPORTAÇÃO DE DADOS -----------------------------------------------------
+    st.header("📂 Importar Dados")
+    arquivo_importado = st.file_uploader("Carregar arquivo .json", type=["json"])
+    if arquivo_importado is not None:
+        if st.button("Restaurar Dados"):
+            try:
+                dados_json = json.load(arquivo_importado)
+                
+                # Restaurar Informações do Processo
+                info = dados_json.get("informacoes_processo", {})
+                st.session_state.processo_input = info.get("processo", "")
+                st.session_state.autor_input = info.get("autor", "")
+                st.session_state.observacao_input = info.get("observacoes", "")
+                
+                # Restaurar Valores Relatório Anual (Tab 2)
+                val_anuais = dados_json.get("valores_relatorio_anual", {})
+                for ano, valor in val_anuais.items():
+                    if f"valor_{ano}" in st.session_state:
+                        st.session_state[f"valor_{ano}"] = valor
+                        
+                # Restaurar Valores Comparação (Tab 3)
+                val_comp = dados_json.get("valores_comparacao", {})
+                base1 = val_comp.get("base_1", {})
+                base2 = val_comp.get("base_2", {})
+                
+                for ano, valor in base1.items():
+                    if f"comp_base1_{ano}" in st.session_state:
+                        st.session_state[f"comp_base1_{ano}"] = valor
+                for ano, valor in base2.items():
+                    if f"comp_base2_{ano}" in st.session_state:
+                        st.session_state[f"comp_base2_{ano}"] = valor
+                        
+                st.success("Dados restaurados com sucesso!")
+                st.rerun() # Atualiza a tela instantaneamente com os novos dados
+            except Exception as e:
+                st.error(f"Erro ao ler o arquivo: {e}")
+                
+    st.markdown("---")
+    
+    # INFORMAÇÕES DO PROCESSO -------------------------------------------------
+    st.header("Informações do Processo")
+    st.text_input("Número do Processo", key="processo_input")
+    st.text_input("Nome do Autor da Ação", key="autor_input")
+    st.text_area("Observações (opcional)", height=100, key="observacao_input")
 
-st.title("📊 Calculadora PSS")
+    # EXPORTAÇÃO DE DADOS -----------------------------------------------------
+    st.markdown("---")
+    st.header("💾 Exportar Dados")
+    
+    # Extração dos 2 primeiros nomes do Autor para o nome do arquivo
+    autor_raw = st.session_state.autor_input.strip()
+    if autor_raw:
+        partes_nome = autor_raw.split()
+        dois_primeiros_nomes = " ".join(partes_nome[:2]).upper()
+    else:
+        dois_primeiros_nomes = "SEM_NOME"
+        
+    timestamp = datetime.now().strftime("%d%m%Y%H%M%S")
+    nome_arquivo_json = f"CALC_PSS_OS {dois_primeiros_nomes} {timestamp}.json"
+    
+    dados_para_exportar = {
+        "informacoes_processo": {
+            "processo": st.session_state.processo_input,
+            "autor": st.session_state.autor_input,
+            "observacoes": st.session_state.observacao_input
+        },
+        "valores_relatorio_anual": {
+            str(ano): st.session_state[f"valor_{ano}"] for ano in AVAILABLE_YEARS
+        },
+        "valores_comparacao": {
+            "base_1": {str(ano): st.session_state[f"comp_base1_{ano}"] for ano in AVAILABLE_YEARS},
+            "base_2": {str(ano): st.session_state[f"comp_base2_{ano}"] for ano in AVAILABLE_YEARS}
+        }
+    }
+    
+    json_string = json.dumps(dados_para_exportar, ensure_ascii=False, indent=4)
+    
+    st.download_button(
+        label="📥 Baixar arquivo .json",
+        data=json_string,
+        file_name=nome_arquivo_json,
+        mime="application/json",
+        use_container_width=True
+    )
 
-# TAB 3 (Onde entra sua lógica de importação do JSON externo)
-tab1, tab2, tab3 = st.tabs(["Cálculo", "Relatório", "Comparação"])
-with tab3:
-    st.subheader("Comparação de Bases")
-    ext_json = st.file_uploader("Carregar JSON de cálculo externo", type=["json"])
-    if ext_json and st.button("Processar JSON de Cálculo"):
-        dados = json.load(ext_json)
-        st.session_state.processo_input = dados.get("meta", {}).get("proc", "")
-        st.session_state.autor_input = dados.get("meta", {}).get("aut", "")
+# Injetar o CSS dinâmico
+st.markdown(tema_ativo["css"], unsafe_allow_html=True)
+
+
+# -----------------------------------------------------------------------------
+# Classes e Funções de Geração de PDF 
+# -----------------------------------------------------------------------------
+class PDFComp(FPDF):
+    def header(self):
+        if self.page_no() == 1:
+            self.set_font('Arial', 'B', 12)
+            self.cell(0, 10, 'Relatório Comparativo PSS - RPPS', ln=True, align='C')
+            self.ln(5)
+            self.set_font('Arial', '', 10)
+            if hasattr(self, 'theme_colors'):
+                self.set_fill_color(*self.theme_colors["header_bg"]) 
+            if st.session_state.processo_input:
+                proc = sanitize_text(st.session_state.processo_input)
+                self.cell(0, 8, f" Processo: {proc}", ln=True, fill=True)
+                self.ln(1)
+            if st.session_state.autor_input:
+                aut = sanitize_text(st.session_state.autor_input)
+                self.cell(0, 8, f" Autor: {aut}", ln=True, fill=True)
+                self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Página {self.page_no()}', align='C')
+
+def gerar_pdf_comparacao(dados_comparacao, observacao_texto, tema):
+    pdf = PDFComp()
+    pdf.theme_colors = tema
+    pdf.add_page()
+    
+    dados_sintese = []
+    pdf.set_fill_color(*tema["th_bg"])
+
+    for idx, ano_data in enumerate(dados_comparacao):
+        ano = ano_data['ano']
+        sal1 = ano_data['sal1']
+        sal2 = ano_data['sal2']
+        contrib1 = ano_data['contrib1']
+        contrib2 = ano_data['contrib2']
+        breakdown1 = ano_data['breakdown1']
+        breakdown2 = ano_data['breakdown2']
+
+        if idx > 0: pdf.add_page()
+
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 10, f" Ano {ano}", ln=True, align='C', fill=True)
+        pdf.ln(5)
+
+        # Base 1
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(0, 8, f" Base 1 - Valor: {formatar_moeda(sal1)}", ln=True)
+        pdf.set_font('Arial', 'B', 9)
+        pdf.cell(50, 8, 'Faixa de Valor', border=1, fill=True)
+        pdf.cell(40, 8, 'Base (R$)', border=1, fill=True)
+        pdf.cell(30, 8, 'Alíquota', border=1, fill=True)
+        pdf.cell(50, 8, 'Contribuição (R$)', border=1, fill=True)
+        pdf.ln()
+        pdf.set_font('Arial', '', 9)
+        for det in breakdown1:
+            pdf.cell(50, 8, det['faixa'], border=1)
+            pdf.cell(40, 8, formatar_moeda(det['base']), border=1)
+            pdf.cell(30, 8, det['aliquota'], border=1)
+            pdf.cell(50, 8, formatar_moeda(det['contribuicao']), border=1)
+            pdf.ln()
+        pdf.set_font('Arial', 'B', 9)
+        pdf.cell(120, 8, "Total Contribuição Base 1:", border=1)
+        pdf.cell(50, 8, formatar_moeda(contrib1), border=1, ln=True)
+        pdf.ln(5)
+
+        # Base 2
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(0, 8, f" Base 2 - Valor: {formatar_moeda(sal2)}", ln=True)
+        pdf.set_font('Arial', 'B', 9)
+        pdf.cell(50, 8, 'Faixa de Valor', border=1, fill=True)
+        pdf.cell(40, 8, 'Base (R$)', border=1, fill=True)
+        pdf.cell(30, 8, 'Alíquota', border=1, fill=True)
+        pdf.cell(50, 8, 'Contribuição (R$)', border=1, fill=True)
+        pdf.ln()
+        pdf.set_font('Arial', '', 9)
+        for det in breakdown2:
+            pdf.cell(50, 8, det['faixa'], border=1)
+            pdf.cell(40, 8, formatar_moeda(det['base']), border=1)
+            pdf.cell(30, 8, det['aliquota'], border=1)
+            pdf.cell(50, 8, formatar_moeda(det['contribuicao']), border=1)
+            pdf.ln()
+        pdf.set_font('Arial', 'B', 9)
+        pdf.cell(120, 8, "Total Contribuição Base 2:", border=1)
+        pdf.cell(50, 8, formatar_moeda(contrib2), border=1, ln=True)
+
+        diff_valor = sal2 - sal1
+        diff_contrib = contrib2 - contrib1
+        pdf.ln(5)
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(0, 8, "Diferenças:", ln=True)
+        pdf.set_font('Arial', '', 9)
+        pdf.cell(80, 8, "Diferença entre valores_base (Base2 - Base1):", border=1)
+        pdf.cell(50, 8, formatar_moeda(diff_valor), border=1, ln=True)
+        pdf.cell(80, 8, "Diferença Contribuição (Base2 - Base1):", border=1)
+        pdf.cell(50, 8, formatar_moeda(diff_contrib), border=1, ln=True)
+
+        efetiva1 = (contrib1 / sal1 * 100) if sal1 > 0 else 0
+        efetiva2 = (contrib2 / sal2 * 100) if sal2 > 0 else 0
+        pdf.cell(80, 8, "Alíquota Efetiva Base 1:", border=1)
+        pdf.cell(50, 8, f"{efetiva1:.2f}%", border=1, ln=True)
+        pdf.cell(80, 8, "Alíquota Efetiva Base 2:", border=1)
+        pdf.cell(50, 8, f"{efetiva2:.2f}%", border=1, ln=True)
+
+        pdf.ln(5)
+        pdf.set_font('Arial', 'I', 8)
+        pdf.cell(0, 6, f"Fonte: {sanitize_text(PORTARIAS.get(ano, 'Portaria não especificada'))}", ln=True)
+        pdf.ln(10)
+
+        dados_sintese.append({
+            "Ano": ano, "Valor Base 1": formatar_moeda(sal1), "Valor Base 2": formatar_moeda(sal2),
+            "Contribuição Base 1": formatar_moeda(contrib1), "Contribuição Base 2": formatar_moeda(contrib2),
+            "Diferença entre valores_base": formatar_moeda(diff_valor), "Diferença Contribuição": formatar_moeda(diff_contrib),
+            "diff_contrib_raw": diff_contrib,
+        })
+
+    # Página de síntese
+    if dados_sintese:
+        pdf.add_page()
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 10, 'Síntese Comparativa', ln=True, align='C')
+        pdf.ln(5)
+
+        pdf.set_font('Arial', 'B', 8)
+        margem_esquerda = pdf.get_x()
+        pdf.cell(15, 8, 'Ano', border=1, fill=True)
+        pdf.cell(30, 8, 'Valor Base 1', border=1, fill=True)
+        pdf.cell(30, 8, 'Valor Base 2', border=1, fill=True)
+        pdf.cell(30, 8, 'Contrib. Base 1', border=1, fill=True) 
+        pdf.cell(30, 8, 'Contrib. Base 2', border=1, fill=True)
         
-        mapa = {}
-        for item in dados.get("d", []):
-            ano = item.get("c", "").split("/")[1]
-            mapa.setdefault(ano, {"p": 0.0, "d": 0.0})
-            mapa[ano]["p"] += float(item.get("gratP", 0))
-            mapa[ano]["d"] += float(item.get("gratD", 0))
+        x = pdf.get_x()
+        y = pdf.get_y()
+        pdf.multi_cell(28, 4, 'Diferença entre\nvalores_base', border=1, align='C', fill=True)
+        pdf.set_xy(x + 28, y)
+        pdf.multi_cell(32, 4, 'Diferença\nContribuição', border=1, align='C', fill=True)
+        pdf.set_xy(margem_esquerda, y + 8)
+        pdf.set_font('Arial', '', 8)
         
+        total_diff_contrib = 0.0
+        for linha in dados_sintese:
+            pdf.cell(15, 8, str(linha['Ano']), border=1)
+            pdf.cell(30, 8, linha['Valor Base 1'], border=1)
+            pdf.cell(30, 8, linha['Valor Base 2'], border=1)
+            pdf.cell(30, 8, linha['Contribuição Base 1'], border=1)
+            pdf.cell(30, 8, linha['Contribuição Base 2'], border=1)
+            pdf.cell(28, 8, linha['Diferença entre valores_base'], border=1)
+            pdf.cell(32, 8, linha['Diferença Contribuição'], border=1)
+            pdf.ln()
+            total_diff_contrib += linha['diff_contrib_raw']
+
+        pdf.set_font('Arial', 'B', 8)
+        pdf.cell(15, 8, 'Total', border=1)
+        pdf.cell(30, 8, '', border=1)
+        pdf.cell(30, 8, '', border=1)
+        pdf.cell(30, 8, '', border=1)
+        pdf.cell(30, 8, '', border=1)
+        pdf.cell(28, 8, '-', border=1, align='C')
+        pdf.cell(32, 8, formatar_moeda(total_diff_contrib), border=1)
+        pdf.ln()
+
+    if observacao_texto:
+        obs_sanitizada = sanitize_text(observacao_texto)
+        pdf.ln(5)
+        pdf.set_draw_color(*tema["divider"])
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(5)
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 10, 'Observações:', ln=True)
+        pdf.set_font('Arial', '', 10)
+        pdf.multi_cell(0, 6, obs_sanitizada)
+
+    out = pdf.output(dest='S')
+    if isinstance(out, str): return out.encode('latin1')
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Interface Principal (Abas)
+# -----------------------------------------------------------------------------
+st.title("📊 Calculadora PSS - Servidores Públicos Federais (RPPS)")
+st.markdown("Calcule a contribuição previdenciária (PSS) para o Regime Próprio da União (2020 a 2026).")
+
+tab1, tab2, tab3 = st.tabs(["🔍 Cálculo Detalhado por Faixa", "📅 Relatório Anual (PDF Detalhado)", "⚖️ Comparação de Bases"])
+
+# Tab 1: Cálculo detalhado por faixa
+with tab1:
+    col1, col2 = st.columns(2)
+    with col1:
+        ano_detalhe = st.selectbox("Selecione o ano", options=AVAILABLE_YEARS, key="detail_year")
+        salario_detalhe_str = st.text_input(f"Valor (R$) – base de contribuição ({ano_detalhe})", value="0,00", key="detail_salary")
+        salario_detalhe = parse_valor(salario_detalhe_str)
+        
+    with col2:
+        tabela = TABLES[ano_detalhe]
+        total_contrib, detalhes = calcular_contribuicao_progressiva(salario_detalhe, tabela)
+        aliquota_efetiva = (total_contrib / salario_detalhe * 100) if salario_detalhe > 0 else 0.0
+        st.metric("Total Contribuição", formatar_moeda(total_contrib))
+        st.metric("Alíquota Efetiva", f"{aliquota_efetiva:.2f}%")
+        
+    if detalhes:
+        st.subheader("Detalhamento por Faixa")
+        df_detalhe = pd.DataFrame(detalhes)
+        df_detalhe["base"] = df_detalhe["base"].apply(formatar_moeda)
+        df_detalhe["contribuicao"] = df_detalhe["contribuicao"].apply(formatar_moeda)
+        st.dataframe(df_detalhe, use_container_width=True, hide_index=True)
+
+# Tab 2: Relatório anual (PDF detalhado)
+with tab2:
+    st.subheader("📅 Informe os valores para cada ano (2020 a 2026)")
+    valores_anuais = {}
+    for ano in AVAILABLE_YEARS:
+        val_str = st.text_input(f"Valor para {ano} (R$)", key=f"valor_{ano}")
+        valores_anuais[ano] = parse_valor(val_str)
+
+    if st.button("📄 Gerar Relatório PDF Detalhado", key="gerar_pdf"):
+        dados_relatorio = []
         for ano in AVAILABLE_YEARS:
-            if str(ano) in mapa:
-                st.session_state[f"comp_base1_{ano}"] = f"{mapa[str(ano)]['p']:,.2f}"
-                st.session_state[f"comp_base2_{ano}"] = f"{mapa[str(ano)]['d']:,.2f}"
-        st.success("Dados preenchidos!")
+            val = valores_anuais[ano]
+            if val > 0:
+                contrib, detalhes = calcular_contribuicao_progressiva(val, TABLES[ano])
+                efetiva = (contrib / val * 100) if val > 0 else 0.0
+                dados_relatorio.append({
+                    "ano": ano, "valor": formatar_moeda(val), "contribuicao": formatar_moeda(contrib),
+                    "aliquota": f"{efetiva:.2f}%", "contrib_raw": contrib, "detalhes": detalhes
+                })
+        if not dados_relatorio:
+            st.warning("Nenhum dado para gerar relatório. Informe pelo menos um valor positivo.")
+        else:
+            class PDFDet(FPDF):
+                def header(self):
+                    if self.page_no() == 1:
+                        self.set_font('Arial', 'B', 12)
+                        self.cell(0, 10, 'Relatório de Cálculo PSS - RPPS', ln=True, align='C')
+                        self.ln(5)
+                        self.set_font('Arial', '', 10)
+                        if hasattr(self, 'theme_colors'):
+                            self.set_fill_color(*self.theme_colors["header_bg"])
+                        if st.session_state.processo_input:
+                            self.cell(0, 8, f" Processo: {sanitize_text(st.session_state.processo_input)}", ln=True, fill=True)
+                            self.ln(1)
+                        if st.session_state.autor_input:
+                            self.cell(0, 8, f" Autor: {sanitize_text(st.session_state.autor_input)}", ln=True, fill=True)
+                            self.ln(5)
+                def footer(self):
+                    self.set_y(-15)
+                    self.set_font('Arial', 'I', 8)
+                    self.cell(0, 10, f'Página {self.page_no()}', align='C')
+
+            def gerar_pdf_detalhado(dados_anos, obs_texto, tema):
+                pdf = PDFDet()
+                pdf.theme_colors = tema
+                pdf.add_page()
+                pdf.set_fill_color(*tema["th_bg"])
+                pdf.set_font('Arial', 'B', 11)
+                pdf.cell(0, 10, ' Resumo por Ano', ln=True, fill=True)
+                pdf.set_font('Arial', 'B', 10)
+                pdf.cell(30, 8, 'Ano', border=1, fill=True)
+                pdf.cell(50, 8, 'Valor (R$)', border=1, fill=True)
+                pdf.cell(60, 8, 'Contribuição Total (R$)', border=1, fill=True)
+                pdf.cell(40, 8, 'Alíquota Efetiva', border=1, fill=True)
+                pdf.ln()
+                pdf.set_font('Arial', '', 10)
+                for linha in dados_anos:
+                    pdf.cell(30, 8, str(linha['ano']), border=1)
+                    pdf.cell(50, 8, linha['valor'], border=1)
+                    pdf.cell(60, 8, linha['contribuicao'], border=1)
+                    pdf.cell(40, 8, linha['aliquota'], border=1)
+                    pdf.ln()
+                for linha in dados_anos:
+                    if not linha.get('detalhes'): continue
+                    pdf.add_page()
+                    pdf.set_font('Arial', 'B', 11)
+                    pdf.cell(0, 10, f" Detalhamento Progressivo - Ano {linha['ano']}", ln=True, fill=True)
+                    pdf.set_font('Arial', 'B', 10)
+                    pdf.cell(60, 8, 'Faixa de Valor', border=1, fill=True)
+                    pdf.cell(50, 8, 'Base (R$)', border=1, fill=True)
+                    pdf.cell(40, 8, 'Alíquota', border=1, fill=True)
+                    pdf.cell(50, 8, 'Contribuição (R$)', border=1, fill=True)
+                    pdf.ln()
+                    pdf.set_font('Arial', '', 10)
+                    for det in linha['detalhes']:
+                        pdf.cell(60, 8, det['faixa'], border=1)
+                        pdf.cell(50, 8, formatar_moeda(det['base']), border=1)
+                        pdf.cell(40, 8, det['aliquota'], border=1)
+                        pdf.cell(50, 8, formatar_moeda(det['contribuicao']), border=1)
+                        pdf.ln()
+                    pdf.set_font('Arial', 'B', 10)
+                    pdf.cell(150, 8, "Total da Contribuição:", border=1)
+                    pdf.cell(50, 8, formatar_moeda(linha['contrib_raw']), border=1, ln=True)
+                    pdf.set_font('Arial', '', 10)
+                    pdf.ln(5)
+                    pdf.set_font('Arial', 'I', 8)
+                    pdf.cell(0, 6, f"Fonte: {sanitize_text(PORTARIAS.get(linha['ano'], 'Portaria não especificada'))}", ln=True)
+                if obs_texto:
+                    pdf.add_page()
+                    pdf.set_draw_color(*tema["divider"])
+                    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+                    pdf.ln(5)
+                    pdf.set_font('Arial', 'B', 11)
+                    pdf.cell(0, 10, 'Observações:', ln=True)
+                    pdf.set_font('Arial', '', 10)
+                    pdf.multi_cell(0, 6, sanitize_text(obs_texto))
+                out = pdf.output(dest='S')
+                if isinstance(out, str): return out.encode('latin1')
+                return out
+
+            pdf_bytes = gerar_pdf_detalhado(dados_relatorio, st.session_state.observacao_input, tema_ativo)
+            b64 = base64.b64encode(pdf_bytes).decode()
+            href = f'<a href="data:application/octet-stream;base64,{b64}" download="relatorio_pss_detalhado.pdf">📥 Clique aqui para baixar o relatório PDF</a>'
+            st.markdown(href, unsafe_allow_html=True)
+            st.success("Relatório detalhado gerado com sucesso!")
+
+# Tab 3: Comparação de Bases
+with tab3:
+    st.subheader("⚖️ Comparação entre duas bases de cálculo por ano")
+    st.markdown("Informe dois valores para cada ano. A diferença na contribuição será calculada.")
 
     cols = st.columns(2)
     bases = {}
-    for i, ano in enumerate(AVAILABLE_YEARS):
-        bases[f"base1_{ano}"] = parse_valor(st.text_input(f"{ano} (Base 1)", key=f"comp_base1_{ano}"))
-        bases[f"base2_{ano}"] = parse_valor(st.text_input(f"{ano} (Base 2)", key=f"comp_base2_{ano}"))
+    with cols[0]:
+        st.markdown("**Base 1 (Valor)**")
+        for ano in AVAILABLE_YEARS:
+            val_str = st.text_input(f"{ano} (R$)", key=f"comp_base1_{ano}")
+            bases[f"base1_{ano}"] = parse_valor(val_str)
+    with cols[1]:
+        st.markdown("**Base 2 (Valor)**")
+        for ano in AVAILABLE_YEARS:
+            val_str = st.text_input(f"{ano} (R$)", key=f"comp_base2_{ano}")
+            bases[f"base2_{ano}"] = parse_valor(val_str)
+
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("Calcular Diferenças", key="calcular_comparacao"):
+            comparacao = []
+            for ano in AVAILABLE_YEARS:
+                val1 = bases[f"base1_{ano}"]
+                val2 = bases[f"base2_{ano}"]
+                if val1 > 0 or val2 > 0:
+                    contrib1, _ = calcular_contribuicao_progressiva(val1, TABLES[ano])
+                    contrib2, _ = calcular_contribuicao_progressiva(val2, TABLES[ano])
+                    diff_contrib = contrib2 - contrib1
+                    diff_val = val2 - val1
+                    comparacao.append({
+                        "Ano": ano, "Valor 1 (R$)": formatar_moeda(val1), "Contribuição 1 (R$)": formatar_moeda(contrib1),
+                        "Valor 2 (R$)": formatar_moeda(val2), "Contribuição 2 (R$)": formatar_moeda(contrib2),
+                        "Diferença entre valores_base (R$)": formatar_moeda(diff_val), "Diferença Contribuição (R$)": formatar_moeda(diff_contrib),
+                    })
+            if comparacao:
+                df_comp = pd.DataFrame(comparacao)
+                st.dataframe(df_comp, use_container_width=True, hide_index=True)
+            else:
+                st.warning("Nenhum ano com valores positivos informados.")
+
+    with col_btn2:
+        if st.button("📄 Gerar Relatório Comparativo PDF", key="gerar_pdf_comparacao"):
+            dados_comparacao = []
+            for ano in AVAILABLE_YEARS:
+                val1 = bases[f"base1_{ano}"]
+                val2 = bases[f"base2_{ano}"]
+                if val1 > 0 or val2 > 0:
+                    contrib1, breakdown1 = calcular_contribuicao_progressiva(val1, TABLES[ano])
+                    contrib2, breakdown2 = calcular_contribuicao_progressiva(val2, TABLES[ano])
+                    dados_comparacao.append({
+                        "ano": ano, "sal1": val1, "sal2": val2, "contrib1": contrib1, "contrib2": contrib2,
+                        "breakdown1": breakdown1, "breakdown2": breakdown2,
+                    })
+            if not dados_comparacao:
+                st.warning("Nenhum dado para gerar relatório. Informe pelo menos um valor positivo em algum ano.")
+            else:
+                pdf_bytes = gerar_pdf_comparacao(dados_comparacao, st.session_state.observacao_input, tema_ativo)
+                b64 = base64.b64encode(pdf_bytes).decode()
+                href = f'<a href="data:application/octet-stream;base64,{b64}" download="relatorio_comparativo_pss.pdf">📥 Clique aqui para baixar o relatório comparativo PDF</a>'
+                st.markdown(href, unsafe_allow_html=True)
+                st.success("Relatório comparativo gerado com sucesso!")
+
+with st.expander("📋 Ver Tabelas de Contribuição (por ano)"):
+    ano_tabela = st.selectbox("Selecione o ano para visualizar a tabela", options=AVAILABLE_YEARS, key="table_year")
+    tabela_exibir = TABLES[ano_tabela]
+    df_tabela = pd.DataFrame(tabela_exibir, columns=["Faixa inferior", "Faixa superior", "Alíquota"])
+    df_tabela["Faixa inferior"] = df_tabela["Faixa inferior"].apply(formatar_moeda)
+    df_tabela["Faixa superior"] = df_tabela["Faixa superior"].replace(float('inf'), "acima")
+    df_tabela["Faixa superior"] = df_tabela["Faixa superior"].apply(lambda x: formatar_moeda(x) if x != "acima" else "acima")
+    df_tabela["Alíquota"] = df_tabela["Alíquota"].apply(lambda x: f"{x*100:.2f}%")
+    st.dataframe(df_tabela, use_container_width=True, hide_index=True)
+
+st.markdown("---")
+st.caption("Fonte: Portarias Interministeriais MPS/MF dos respectivos anos. Cálculo progressivo por faixas.")
