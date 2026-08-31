@@ -171,6 +171,7 @@ def salvar_dados():
         "nome_autor": st.session_state.get("autor_input", ""),
         "nome_reu": st.session_state.get("reu_input", ""),
         "observacao": st.session_state.get("obs_input", ""),
+        "nota_pdf": st.session_state.get("nota_pdf_input", "Nota: A correção foi realizada com base na taxa SELIC acumulada, conforme fatores disponíveis no site do Conselho de Justiça Federal"),
         "fonte_obs": st.session_state.get("fonte_obs", "Arial"),
         "tam_obs": st.session_state.get("tam_obs", 8)
     }
@@ -217,6 +218,7 @@ def carregar_dados(dados_codificados):
         st.session_state.autor_input = dados.get("nome_autor", "")
         st.session_state.reu_input = dados.get("nome_reu", "")
         st.session_state.obs_input = dados.get("observacao", "")
+        st.session_state.nota_pdf_input = dados.get("nota_pdf", "Nota: A correção foi realizada com base na taxa SELIC acumulada, conforme fatores disponíveis no site do Conselho de Justiça Federal")
         st.session_state.fonte_obs = dados.get("fonte_obs", "Arial")
         st.session_state.tam_obs = dados.get("tam_obs", 8)
             
@@ -240,6 +242,7 @@ def limpar_dados():
     st.session_state.autor_input = ""
     st.session_state.reu_input = ""
     st.session_state.obs_input = ""
+    st.session_state.nota_pdf_input = "Nota: A correção foi realizada com base na taxa SELIC acumulada, conforme fatores disponíveis no site do Conselho de Justiça Federal"
     st.session_state.fonte_obs = "Arial"
     st.session_state.tam_obs = 8
     
@@ -288,7 +291,8 @@ def calcular_inicio_multa(data_despacho, prazo_dias, dias_uteis=False, dias_susp
     return data_fim_prazo, data_inicio_multa
 
 def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None, 
-              fonte_obs="Arial", tam_obs=8, label_data_despacho="Data da ciência da decisão"):  # ← ALTERAÇÃO: novo parâmetro
+              fonte_obs="Arial", tam_obs=8, label_data_despacho="Data da ciência da decisão",
+              nota_pdf="Nota: A correção foi realizada com base na taxa SELIC acumulada, conforme fatores disponíveis no site do Conselho de Justiça Federal"):  # ← ALTERAÇÃO: novo parâmetro
     try:
         FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
         pdf = FPDF()
@@ -437,7 +441,7 @@ def gerar_pdf(res, numero_processo, nome_autor, nome_reu, observacao=None,
         pdf.set_font("Arial", "I", 8)
         pdf.cell(
             0, 6,
-            "Nota: A correção foi realizada com base na taxa SELIC acumulada, conforme fatores disponíveis no site do Conselho de Justiça Federal",
+            nota_pdf.strip() if nota_pdf and nota_pdf.strip() else "",
             ln=True
         )
 
@@ -654,6 +658,8 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
         st.session_state.indices_selic = {}
     if "label_data_despacho" not in st.session_state:  # ← ALTERAÇÃO: inicializa rótulo no session_state
         st.session_state.label_data_despacho = "Data da ciência da decisão"
+    if "nota_pdf_input" not in st.session_state:
+        st.session_state.nota_pdf_input = "Nota: A correção foi realizada com base na taxa SELIC acumulada, conforme fatores disponíveis no site do Conselho de Justiça Federal"
 
     # --- Bloco de campos dinâmicos fora do form ---
     if st.session_state.faixas:
@@ -830,7 +836,7 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
                 for mes, valor in indices_selic.items():
                     st.session_state[f"indice_{mes}"] = float(valor)
                 st.success("Índices SELIC calculados com sucesso!")
-                st.json({k: f"{v:.2f}%" for k, v in indices_selic.items()})
+                st.json({k: f"{v:.6f}%" for k, v in indices_selic.items()})
             else:
                 st.error("Não foi possível calcular os índices. Verifique os dados de entrada.")
 
@@ -856,7 +862,7 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
                 key=key, 
                 value=st.session_state[key],
                 step=0.01, 
-                format="%.2f"
+                format="%.6f"
             )
             indices[mes] = indice / 100
 
@@ -882,7 +888,8 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
             "tipo_prazo": tipo_prazo,
             "data_fim_prazo": data_fim_prazo,
             "data_inicio_multa": data_inicio_multa,
-            "label_data_despacho": label_data_despacho  # ← ALTERAÇÃO: salva o rótulo personalizado no resultado
+            "label_data_despacho": label_data_despacho,
+            "nota_pdf": st.session_state.get("nota_pdf_input", "Nota: A correção foi realizada com base na taxa SELIC acumulada, conforme fatores disponíveis no site do Conselho de Justiça Federal")
         }
 
     if "resultado_multa" in st.session_state:
@@ -893,7 +900,7 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
             indice = res["indices"].get(mes, 0.0)
             corrigido = bruto * (1 + indice)
             data_formatada = f"{mes[5:]}/{mes[:4]}"
-            detalhamento.append([data_formatada, moeda_br(bruto), f"{indice*100:.2f}%", moeda_br(corrigido)])
+            detalhamento.append([data_formatada, moeda_br(bruto), f"{indice*100:.6f}%", moeda_br(corrigido)])
         df_detalhamento = pd.DataFrame(detalhamento, columns=["Mês/Ano", "Base", "Índice", "Corrigido"])
         st.markdown("### 🗒️ Detalhamento por mês:")
         st.table(df_detalhamento)
@@ -913,6 +920,13 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
                 nome_reu = st.text_input("Réu", key="reu_input")
                 fonte_obs = st.selectbox("Fonte das observações", ["Arial", "DejaVu"], key="fonte_obs")
                 tam_obs = st.slider("Tamanho da fonte das observações", 8, 10, 8, key="tam_obs")
+                
+                nota_pdf = st.text_area(
+                    "Nota do relatório PDF",
+                    key="nota_pdf_input",
+                    height=100,
+                    help="Texto exibido no rodapé do PDF. Pode ser editado, salvo e carregado junto com o projeto."
+                )
                 
                 # SEÇÃO SALVAR/ABRIR
                 st.markdown("---")
@@ -966,7 +980,8 @@ Adicione faixas de multa com valores diferentes. O total por mês será corrigid
                                 observacao,
                                 fonte_obs,
                                 tam_obs,
-                                st.session_state.resultado_multa.get("label_data_despacho", "Data da ciência da decisão")  # ← ALTERAÇÃO: passa o rótulo personalizado
+                                st.session_state.resultado_multa.get("label_data_despacho", "Data da ciência da decisão"),
+                                nota_pdf
                             )
                             if pdf_data:
                                 st.download_button(
